@@ -69,6 +69,11 @@ class StageContext:
     image_id: str
     input_hash: str
     options: dict[str, object] = field(default_factory=dict)
+    # Added by B1 (docs/02-BACKEND.md §6) so `hash_verify` can actually open
+    # the evidence image via pramaan_core — optional/defaulted so the Wave 0
+    # skeleton's own tests (which don't need real evidence) keep working.
+    evidence_path: str | None = None
+    expected_sha256: str | None = None
 
 
 class Stage(Protocol):
@@ -98,6 +103,22 @@ class JobRunner(Protocol):
 
 def _marker_path(ctx: StageContext, stage: str) -> Path:
     return ctx.case_dir / "jobs" / f"{ctx.image_id}.{stage}.done"
+
+
+def make_runner(backend: str, redis_url: str) -> JobRunner:
+    """Factory used by ``apps/api`` (``JOB_BACKEND=inline|dramatiq``,
+    docs/02-BACKEND.md §3). Raises ``pramaan_worker.dramatiq_runner
+    .RedisUnavailable`` for ``backend="dramatiq"`` when Redis isn't
+    reachable — callers should catch this and fall back to ``inline`` (or
+    surface a clear error), never hang.
+    """
+    if backend == "inline":
+        return InlineJobRunner()
+    if backend == "dramatiq":
+        from pramaan_worker.dramatiq_runner import DramatiqJobRunner
+
+        return DramatiqJobRunner(redis_url)
+    raise ValueError(f"Unknown job backend: {backend!r}")
 
 
 class InlineJobRunner:

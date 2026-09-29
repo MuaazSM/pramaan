@@ -3,7 +3,13 @@ name = "pramaan-custody"
 version = "0.1.0"
 description = "Hash-chained audit log, Ed25519, Fabric client."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "cryptography>=42,<46",
+    "pramaan-core",
+]
+
+[tool.uv.sources]
+pramaan-core = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -11,6 +17,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pramaan_custody"]
+artifacts = ["pramaan_custody/py.typed"]
 
 [tool.ruff]
 line-length = 100

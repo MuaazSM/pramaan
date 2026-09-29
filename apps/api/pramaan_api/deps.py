@@ -7,7 +7,7 @@ from functools import lru_cache
 
 from fastapi import Depends, Request
 
-from pramaan_api.errors import forbidden, unauthenticated
+from pramaan_api.errors import ApiError, forbidden, unauthenticated
 from pramaan_api.security import Role, SessionCodec, User, get_user
 from pramaan_api.settings import Settings, get_settings
 
@@ -57,3 +57,30 @@ def require_role(*roles: Role) -> Callable[[User], User]:
 # signatures can write `Depends(require_examiner_or_admin)` instead of
 # calling `require_role(...)` inline in an argument default (ruff B008).
 require_examiner_or_admin = require_role("examiner", "admin")
+
+
+def require_csrf(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    user: User = Depends(get_current_user),
+) -> None:
+    """Double-submit CSRF check for mutating routes (docs/02-BACKEND.md
+    §11). ``POST /auth/login`` sets a readable ``pramaan_csrf`` cookie
+    (``pramaan_api.security.new_csrf_token``); a caller must echo it back in
+    the ``X-CSRF-Token`` header on any mutating request.
+
+    Only enforced when ``stub_mode=False``: the Wave 0 stub-mode demo (the
+    default, per ``docs/progress/W0.3.md``) has no CSRF-aware frontend yet,
+    and every existing stub-mode test in ``tests/backend`` predates this
+    check — flipping it on unconditionally would break WEB's in-flight
+    integration for routes this task doesn't otherwise touch. Real-mode
+    (``STUB_MODE=0``) callers — this task's own new tests — must send the
+    header. See docs/progress/B1.md "Decisions".
+    """
+    del user  # depended on only to guarantee a session exists first
+    if settings.stub_mode:
+        return
+    cookie_token = request.cookies.get(settings.csrf_cookie_name)
+    header_token = request.headers.get(settings.csrf_header_name)
+    if not cookie_token or not header_token or cookie_token != header_token:
+        raise ApiError(403, "csrf_failed", "Missing or invalid CSRF token.")

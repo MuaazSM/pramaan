@@ -14,11 +14,13 @@ only need to know the message shapes, not how they were produced.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from pramaan_api.fixtures import store
+from pramaan_api.real import events as real_events
 from pramaan_api.settings import get_settings
 
 router = APIRouter()
@@ -26,6 +28,12 @@ router = APIRouter()
 # Small, fixed pacing delay between simulated messages — deterministic in
 # content, just not instantaneous, so a real client sees a "live" stream.
 _STEP_DELAY_S = 0.02
+
+# Real mode: poll interval for new events and a demo idle cap (a real
+# deployment would keep the socket open indefinitely; this is a one-process
+# in-memory event bus, so bounding it keeps test suites from hanging).
+_POLL_INTERVAL_S = 0.05
+_REAL_MODE_IDLE_CAP_S = 20.0
 
 
 def _simulated_events(case_id: str) -> list[dict[str, Any]]:
@@ -102,9 +110,29 @@ async def ws_events(websocket: WebSocket, case_id: str | None = None) -> None:
     await websocket.accept()
     settings = get_settings()
     if not settings.stub_mode:
-        # Real mode wires this to the worker's event bus; nothing to stream
-        # until that lands (B1), so close cleanly rather than hang.
-        await websocket.close(code=1000)
+        # Real mode: drain pramaan_api.real.events' in-process bus for this
+        # case (docs/02-BACKEND.md §7) — events published by
+        # pramaan_api.real.store.run_evidence_job/append_audit while a job
+        # runs. Any backlog published before this socket connected is sent
+        # immediately (offset 0); the connection then polls for more until
+        # a job.done/job.failed is seen or it's been idle for a while.
+        cid = case_id or ""
+        offset = 0
+        last_activity = time.monotonic()
+        try:
+            while time.monotonic() - last_activity < _REAL_MODE_IDLE_CAP_S:
+                new_events, offset = real_events.events_since(cid, offset)
+                if new_events:
+                    last_activity = time.monotonic()
+                for event in new_events:
+                    await websocket.send_json(event)
+                    if event.get("type") in ("job.done", "job.failed"):
+                        await websocket.close(code=1000)
+                        return
+                await asyncio.sleep(_POLL_INTERVAL_S)
+            await websocket.close(code=1000)
+        except WebSocketDisconnect:
+            return
         return
     try:
         for event in _simulated_events(case_id or store.DATA.case.id):

@@ -1,17 +1,22 @@
 """Session-cookie auth with seeded demo users (docs/02-BACKEND.md §4, §11).
 
-Wave 0 scope: a signed, HttpOnly session cookie (via ``itsdangerous``) around
-three seeded users, one per role. Password hashing (argon2) and CSRF tokens
-are full-B1 concerns (02 §11) and are noted as known gaps in
-``docs/progress/W0.3.md`` — this stub compares plaintext passwords against an
-in-memory seed so WEB can build the login screen tonight.
+B1: passwords are argon2-hashed (``argon2-cffi``) rather than compared as
+plaintext (the W0.3 stub) — the three seeded users' passwords are still
+``demo``, but the check now goes through a real KDF/verify. A signed,
+HttpOnly session cookie (``itsdangerous``) is set on login as before. CSRF
+(double-submit cookie) is layered on top in ``deps.require_csrf`` and
+enforced for mutating routes once ``STUB_MODE=0`` — see that module's
+docstring for why it isn't enforced in the Wave-0 stub-mode demo path too.
 """
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from typing import Literal
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHash, VerifyMismatchError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 Role = Literal["examiner", "reviewer", "admin"]
@@ -24,23 +29,38 @@ class User:
     display_name: str
 
 
+_hasher = PasswordHasher()
+
 # Seeded users (CLAUDE.md / W0.3 task): examiner/demo, reviewer/demo, admin/demo.
+# Hashed once at import time (argon2 is deliberately slow; the seed set is
+# fixed and tiny, so this costs one hash per role at process start, not per
+# login attempt).
 _SEED_USERS: dict[str, tuple[str, User]] = {
-    "examiner": ("demo", User("examiner", "examiner", "Examiner Demo")),
-    "reviewer": ("demo", User("reviewer", "reviewer", "Reviewer Demo")),
-    "admin": ("demo", User("admin", "admin", "Admin Demo")),
+    "examiner": (_hasher.hash("demo"), User("examiner", "examiner", "Examiner Demo")),
+    "reviewer": (_hasher.hash("demo"), User("reviewer", "reviewer", "Reviewer Demo")),
+    "admin": (_hasher.hash("demo"), User("admin", "admin", "Admin Demo")),
 }
 
 
 def authenticate(username: str, password: str) -> User | None:
-    """Check a login attempt against the seeded users. ``None`` on failure."""
+    """Check a login attempt against the seeded users' argon2 hashes.
+    ``None`` on failure (unknown user or wrong password).
+    """
     entry = _SEED_USERS.get(username)
     if entry is None:
         return None
-    expected_password, user = entry
-    if password != expected_password:
+    password_hash, user = entry
+    try:
+        _hasher.verify(password_hash, password)
+    except (VerifyMismatchError, InvalidHash):
         return None
     return user
+
+
+def new_csrf_token() -> str:
+    """A fresh random CSRF token (double-submit cookie; see
+    ``deps.require_csrf``)."""
+    return secrets.token_urlsafe(32)
 
 
 def get_user(username: str) -> User | None:

@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     session_cookie_name: str = "pramaan_session"
     session_max_age_s: int = 60 * 60 * 12  # 12h
 
+    # CSRF (double-submit cookie, docs/02-BACKEND.md §11). Issued on every
+    # login regardless of mode; enforced on mutating routes only when
+    # stub_mode=False (see pramaan_api.deps.require_csrf).
+    csrf_cookie_name: str = "pramaan_csrf"
+    csrf_header_name: str = "x-csrf-token"
+
 
 @lru_cache
 def get_settings() -> Settings:

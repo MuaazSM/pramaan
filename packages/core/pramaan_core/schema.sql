@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS examiners (
     username        TEXT NOT NULL UNIQUE,
     display_name    TEXT NOT NULL,
     role            TEXT NOT NULL,              -- examiner | reviewer | admin
-    pubkey_ed25519  TEXT,                        -- base64, custody signing key
+    pubkey_ed25519  TEXT,                        -- hex, custody signing key
+    password_hash   TEXT,                        -- argon2 hash; NULL for service/lab identities
     created_utc     TEXT NOT NULL
 );
 
@@ -126,6 +127,24 @@ CREATE TABLE IF NOT EXISTS log_events (
     offset          INTEGER NOT NULL             -- where on disk the record lives
 );
 CREATE INDEX IF NOT EXISTS idx_log_events_image ON log_events(image_id);
+
+-- ClockObservation rows seeded from SWGDE evidence intake (device clock vs.
+-- reference clock at seizure — docs/02-BACKEND.md §5) and, later, from log
+-- time-change events / OSD readings (docs/03-AI-TIMELINE.md §3). Additive
+-- table: pramaan_core.models.ClockObservation predates this table (W0.2);
+-- B1 is the first writer.
+CREATE TABLE IF NOT EXISTS clock_observations (
+    id              TEXT PRIMARY KEY,
+    image_id        TEXT NOT NULL REFERENCES evidence_images(id),
+    channel         INTEGER,
+    source          TEXT NOT NULL,               -- seizure | log_time_change | osd | header | index | examiner
+    device_ts_us    INTEGER NOT NULL,
+    reference_ts_us INTEGER,
+    offset_us       INTEGER NOT NULL,
+    weight          REAL NOT NULL,
+    details         TEXT NOT NULL                -- JSON
+);
+CREATE INDEX IF NOT EXISTS idx_clock_observations_image ON clock_observations(image_id);
 
 CREATE TABLE IF NOT EXISTS inferred_layouts (
     id              TEXT PRIMARY KEY,
