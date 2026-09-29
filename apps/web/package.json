@@ -1,0 +1,14 @@
+{
+  "name": "@pramaan/web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pramaan web app placeholder. F1 (Wave 1) replaces this with the full Vite + React + TS scaffold — see docs/04-FRONTEND.md.",
+  "type": "module",
+  "scripts": {
+    "lint": "echo '[web] lint placeholder — F1 scaffolds Vite + eslint' && exit 0",
+    "typecheck": "echo '[web] typecheck placeholder — F1 scaffolds tsc strict' && exit 0",
+    "test": "echo '[web] test placeholder — F1 scaffolds vitest' && exit 0",
+    "build": "echo '[web] build placeholder' && exit 0",
+    "shots": "echo '[web] shots placeholder — F1/Q3 wire Playwright' && exit 0"
+  }
+}

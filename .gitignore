@@ -1,2 +1,47 @@
 .env
 docs/
+
+# --- Python (uv workspace) ---
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+uv-cache/
+
+# --- Rust (Cargo workspace) ---
+target/
+
+# --- Node / pnpm (apps/web) ---
+node_modules/
+dist/
+build/
+.vite/
+.turbo/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# --- Evidence corpus (never commit disk images) ---
+corpus/images/
+corpus/**/*.img
+corpus/**/*.E01
+corpus/**/*.parquet
+
+# --- Runtime data / local state ---
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+
+# --- OS / editor cruft ---
+.DS_Store
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json

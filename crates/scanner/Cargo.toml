@@ -1,0 +1,16 @@
+[package]
+name = "pramaan-scanner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Disk-speed signature and NAL scans (mmap + aho-corasick + rayon), with a pure-Python fallback kept in packages/core."
+publish = false
+
+[lib]
+name = "pramaan_scanner"
+path = "src/lib.rs"
+
+# C1 (Wave 1) adds memmap2, aho-corasick, rayon and the optional PyO3/maturin
+# wiring. Kept dependency-free here so `cargo build`/`cargo test` work with
+# zero network access on a fresh clone.
+[dependencies]

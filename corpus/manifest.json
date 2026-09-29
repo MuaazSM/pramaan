@@ -1,0 +1,6 @@
+{
+  "profile": null,
+  "generated_at": null,
+  "images": [],
+  "note": "Placeholder written by W0.1 (monorepo scaffold). `just corpus` (Q1/Q2, Wave 1-2) generates the synthetic DVR disk images into corpus/images/ (gitignored) and populates this manifest plus corpus/truth/<image>.json per docs/05-INFRA-QA.md §4."
+}

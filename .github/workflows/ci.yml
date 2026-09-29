@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.2
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: just setup
+        run: |
+          if ! command -v just >/dev/null 2>&1; then
+            brew install just
+          fi
+          just setup
+
+      - name: just check
+        run: just check
+
+      - name: just doctor
+        run: just doctor
+
+      # Corpus generation and validation are stubs until Q1/Q2 (Wave 1-2)
+      # and Q3 (Wave 4) land; these steps stay green (exit 0) until then
+      # and start doing real work without any workflow change.
+      - name: just corpus small (cached)
+        run: just corpus small
+
+      - name: just validate
+        run: just validate
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: docs/VALIDATION.md
+          if-no-files-found: ignore

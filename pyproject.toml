@@ -1,0 +1,84 @@
+[project]
+name = "pramaan"
+version = "0.1.0"
+description = "Pramaan — multi-vendor DVR/NVR forensic platform (workspace root)."
+requires-python = ">=3.11"
+dependencies = [
+    "pramaan-core",
+    "pramaan-formats",
+    "pramaan-recovery",
+    "pramaan-logs",
+    "pramaan-timeline",
+    "pramaan-analytics",
+    "pramaan-custody",
+    "pramaan-reporting",
+    "pramaan-export",
+    "pramaan-llm",
+    "pramaan-api",
+    "pramaan-worker",
+    "pramaan-synthdvr",
+    "pramaan-bindiff",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+pramaan-core = { workspace = true }
+pramaan-formats = { workspace = true }
+pramaan-recovery = { workspace = true }
+pramaan-logs = { workspace = true }
+pramaan-timeline = { workspace = true }
+pramaan-analytics = { workspace = true }
+pramaan-custody = { workspace = true }
+pramaan-reporting = { workspace = true }
+pramaan-export = { workspace = true }
+pramaan-llm = { workspace = true }
+pramaan-api = { workspace = true }
+pramaan-worker = { workspace = true }
+pramaan-synthdvr = { workspace = true }
+pramaan-bindiff = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "packages/*",
+    "apps/api",
+    "apps/worker",
+    "tools/synthdvr",
+    "tools/bindiff",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pre-commit>=3.7",
+]
+
+# Heavy ML/CV dependencies (torch, paddleocr, ultralytics, opencv-contrib, ...)
+# must never land in the default dependency set on this dev machine (macOS
+# arm64, ~13 GiB free disk). Individual packages that need them (packages/analytics,
+# packages/timeline OCR fallbacks) declare an optional extra that `just setup`
+# does NOT install by default. See docs/progress/W0.1.md "Decisions".
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["packages/formats/pramaan_formats/generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: corpus-scale tests, excluded from `just check` by default",
+    "live: tests that hit the network or a live LLM; never run in `just check`",
+]
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+exclude = ["packages/formats/pramaan_formats/generated"]
