@@ -1,0 +1,94 @@
+{
+  "channels": [
+    {
+      "channel": 1,
+      "name": "Gate"
+    },
+    {
+      "channel": 2,
+      "name": "Shopfront"
+    },
+    {
+      "channel": 3,
+      "name": "Counter"
+    }
+  ],
+  "clock": {
+    "osd_drift_s": {},
+    "segments": [
+      {
+        "end_device": null,
+        "offset_true_to_device_us": 0,
+        "start_device": "2026-03-12T10:00:00Z"
+      }
+    ],
+    "time_changes": []
+  },
+  "deletions": [],
+  "device": {
+    "model": null,
+    "serial": null
+  },
+  "family": "gensim",
+  "hidden_layout": null,
+  "image": "gensim_carve",
+  "log_events": [],
+  "motion_events": [],
+  "recordings": [
+    {
+      "byte_ranges": [
+        [
+          0,
+          88554
+        ]
+      ],
+      "channel": 1,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:08Z",
+      "frames": 100,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          88554,
+          135018
+        ]
+      ],
+      "channel": 2,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:08Z",
+      "frames": 100,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          223572,
+          317724
+        ],
+        [
+          541296,
+          350
+        ]
+      ],
+      "channel": 3,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:08Z",
+      "frames": 100,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    }
+  ],
+  "seizure": {
+    "dvr_displayed": "2026-03-12T16:35:20",
+    "reference": "2026-03-12T16:30:08+05:30"
+  },
+  "sha256": "4f7c9aae870a5815c0ae753dcf995579ad08cfb96f884a47b3eb2118bece9996",
+  "tier": "C"
+}

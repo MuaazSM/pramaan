@@ -3,7 +3,10 @@ name = "pramaan-synthdvr"
 version = "0.1.0"
 description = "Synthetic DVR disk image generator."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pillow>=10,<12",
+    "pyarrow>=16,<19",
+]
 
 [build-system]
 requires = ["hatchling"]

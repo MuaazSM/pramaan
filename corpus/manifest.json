@@ -1,6 +1,55 @@
 {
-  "profile": null,
-  "generated_at": null,
-  "images": [],
-  "note": "Placeholder written by W0.1 (monorepo scaffold). `just corpus` (Q1/Q2, Wave 1-2) generates the synthetic DVR disk images into corpus/images/ (gitignored) and populates this manifest plus corpus/truth/<image>.json per docs/05-INFRA-QA.md §4."
+  "generated_at": "2026-09-29T23:44:36Z",
+  "images": [
+    {
+      "family": "dhsim",
+      "name": "dhsim_expiry",
+      "path": "corpus/images/dhsim_expiry.img",
+      "scenario": "expiry",
+      "sha256": "768a098b09b0a79eb5125cd77d063fa09983892baf708e35aa7c5913c6898a2e",
+      "size_bytes": 1620331
+    },
+    {
+      "family": "dhsim",
+      "name": "dhsim_format",
+      "path": "corpus/images/dhsim_format.img",
+      "scenario": "format",
+      "sha256": "89d0b564b0dbe05566cdec531b60a30ee245f4dfe2719d16724b6fe5a58edbaf",
+      "size_bytes": 1071564
+    },
+    {
+      "family": "gensim",
+      "name": "gensim_carve",
+      "path": "corpus/images/gensim_carve.img",
+      "scenario": "n/a",
+      "sha256": "4f7c9aae870a5815c0ae753dcf995579ad08cfb96f884a47b3eb2118bece9996",
+      "size_bytes": 541646
+    },
+    {
+      "family": "hiksim",
+      "name": "hiksim_clean",
+      "path": "corpus/images/hiksim_clean.img",
+      "scenario": "none",
+      "sha256": "6e7d14e65b8c11db46c1907b738bab95e955654d26daaf3b863eed38db76c8a7",
+      "size_bytes": 8400896
+    },
+    {
+      "family": "hiksim",
+      "name": "hiksim_clockchange",
+      "path": "corpus/images/hiksim_clockchange.img",
+      "scenario": "none+time_change+osd_drift",
+      "sha256": "6aa3216d000dcf3032b64aea6d1acbf13e740c613c4e4ab5600b8162651d28b3",
+      "size_bytes": 8400896
+    },
+    {
+      "family": "hiksim",
+      "name": "hiksim_format",
+      "path": "corpus/images/hiksim_format.img",
+      "scenario": "format",
+      "sha256": "d26df78bc79830b49add3fb6aa60f429350d04a600535b4666b395d4c1fbb821",
+      "size_bytes": 8400896
+    }
+  ],
+  "note": "Written by `just corpus` (tools/synthdvr, docs/05-INFRA-QA.md \u00a74). Images live in corpus/images/ (gitignored); ground truth lives in corpus/truth/<image>.json + <image>.frames.parquet (frames.parquet is gitignored too \u2014 it's regenerable from the same config).",
+  "profile": "small"
 }

@@ -1,0 +1,299 @@
+{
+  "channels": [
+    {
+      "channel": 1,
+      "name": "Gate"
+    },
+    {
+      "channel": 2,
+      "name": "Shopfront"
+    },
+    {
+      "channel": 3,
+      "name": "Counter"
+    },
+    {
+      "channel": 4,
+      "name": "Rear lane"
+    }
+  ],
+  "clock": {
+    "osd_drift_s": {},
+    "segments": [
+      {
+        "end_device": null,
+        "offset_true_to_device_us": 0,
+        "start_device": "2026-03-12T10:00:00Z"
+      }
+    ],
+    "time_changes": []
+  },
+  "deletions": [
+    {
+      "action_device": "2026-03-12T10:00:46Z",
+      "actor": "system",
+      "channel": 1,
+      "end_device": "2026-03-12T10:00:12Z",
+      "method": "expiry",
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "action_device": "2026-03-12T10:00:46Z",
+      "actor": "system",
+      "channel": 2,
+      "end_device": "2026-03-12T10:00:12Z",
+      "method": "expiry",
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "action_device": "2026-03-12T10:00:46Z",
+      "actor": "system",
+      "channel": 3,
+      "end_device": "2026-03-12T10:00:12Z",
+      "method": "expiry",
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "action_device": "2026-03-12T10:00:46Z",
+      "actor": "system",
+      "channel": 4,
+      "end_device": "2026-03-12T10:00:12Z",
+      "method": "expiry",
+      "start_device": "2026-03-12T10:00:00Z"
+    }
+  ],
+  "device": {
+    "model": "DVR-SIM-DH-8CH",
+    "serial": "SIMDH000123"
+  },
+  "family": "dhsim",
+  "hidden_layout": null,
+  "image": "dhsim_expiry",
+  "log_events": [
+    {
+      "kind": "power_on",
+      "offset": 1616235,
+      "ts_device": "2026-03-12T09:58:00Z",
+      "user": "system"
+    },
+    {
+      "kind": "login",
+      "offset": 1616267,
+      "ts_device": "2026-03-12T09:59:00Z",
+      "user": "admin"
+    },
+    {
+      "kind": "logout",
+      "offset": 1616299,
+      "ts_device": "2026-03-12T10:00:46Z",
+      "user": "system"
+    },
+    {
+      "kind": "playback",
+      "offset": 1616331,
+      "ts_device": "2026-03-12T10:01:06Z",
+      "user": "admin"
+    },
+    {
+      "kind": "logout",
+      "offset": 1616363,
+      "ts_device": "2026-03-12T10:01:36Z",
+      "user": "admin"
+    }
+  ],
+  "motion_events": [
+    {
+      "channel": 3,
+      "end_true": "2026-03-12T10:00:07Z",
+      "start_true": "2026-03-12T10:00:03Z"
+    }
+  ],
+  "recordings": [
+    {
+      "byte_ranges": [
+        [
+          8192,
+          133055
+        ]
+      ],
+      "channel": 1,
+      "deleted": true,
+      "end_device": "2026-03-12T10:00:12Z",
+      "frames": 150,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          141247,
+          129985
+        ]
+      ],
+      "channel": 2,
+      "deleted": true,
+      "end_device": "2026-03-12T10:00:12Z",
+      "frames": 150,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          271232,
+          147431
+        ]
+      ],
+      "channel": 3,
+      "deleted": true,
+      "end_device": "2026-03-12T10:00:12Z",
+      "frames": 150,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          418663,
+          141484
+        ]
+      ],
+      "channel": 4,
+      "deleted": true,
+      "end_device": "2026-03-12T10:00:12Z",
+      "frames": 150,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          560147,
+          133820
+        ]
+      ],
+      "channel": 1,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:24Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          693967,
+          133059
+        ]
+      ],
+      "channel": 2,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:24Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          827026,
+          127805
+        ]
+      ],
+      "channel": 3,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:24Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          954831,
+          130003
+        ]
+      ],
+      "channel": 4,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:24Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          1084834,
+          135912
+        ]
+      ],
+      "channel": 1,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:36Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:24Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          1220746,
+          134180
+        ]
+      ],
+      "channel": 2,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:36Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:24Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          1354926,
+          133508
+        ]
+      ],
+      "channel": 3,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:36Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:24Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          1488434,
+          127801
+        ]
+      ],
+      "channel": 4,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:36Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:24Z"
+    }
+  ],
+  "seizure": {
+    "dvr_displayed": "2026-03-12T16:35:48",
+    "reference": "2026-03-12T16:30:36+05:30"
+  },
+  "sha256": "768a098b09b0a79eb5125cd77d063fa09983892baf708e35aa7c5913c6898a2e",
+  "tier": "A"
+}

@@ -166,8 +166,13 @@ _pytest path:
 # `just check`/CI never depend on unimplemented work.
 # ---------------------------------------------------------------------------
 
+# Builds the synthetic DVR disk corpus (docs/05-INFRA-QA.md §4) into
+# corpus/images/ (gitignored) + corpus/truth/, and corpus/manifest.json.
+# Q1 (this) wires HIKSIM/DHSIM/GENSIM; Q2 (Wave 2) adds HWSIM/XSIM to the
+# same `pramaan_synthdvr.cli` registry. Only the "small" profile exists
+# (the ~13 GiB free disk budget on the dev machine rules out "full").
 corpus profile="small":
-    @echo "just corpus: not yet implemented (Q1/Q2, Wave 1-2 build tools/synthdvr). Requested profile: {{profile}}"
+    uv run python -m pramaan_synthdvr.cli build-all {{profile}}
 
 validate:
     @echo "just validate: not yet implemented (Q3, Wave 4 builds tests/validation + docs/VALIDATION.md)."

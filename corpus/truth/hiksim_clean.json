@@ -1,0 +1,200 @@
+{
+  "channels": [
+    {
+      "channel": 1,
+      "name": "Gate"
+    },
+    {
+      "channel": 2,
+      "name": "Shopfront"
+    },
+    {
+      "channel": 3,
+      "name": "Counter"
+    },
+    {
+      "channel": 4,
+      "name": "Rear lane"
+    }
+  ],
+  "clock": {
+    "osd_drift_s": {},
+    "segments": [
+      {
+        "end_device": null,
+        "offset_true_to_device_us": 0,
+        "start_device": "2026-03-12T10:00:00Z"
+      }
+    ],
+    "time_changes": []
+  },
+  "deletions": [],
+  "device": {
+    "model": "DVR-SIM-HIK-8CH",
+    "serial": "SIMHIK000123"
+  },
+  "family": "hiksim",
+  "hidden_layout": null,
+  "image": "hiksim_clean",
+  "log_events": [
+    {
+      "kind": "power_on",
+      "offset": 8396800,
+      "ts_device": "2026-03-12T09:58:00Z",
+      "user": "system"
+    },
+    {
+      "kind": "login",
+      "offset": 8396864,
+      "ts_device": "2026-03-12T09:59:00Z",
+      "user": "admin"
+    },
+    {
+      "kind": "playback",
+      "offset": 8396928,
+      "ts_device": "2026-03-12T10:00:54Z",
+      "user": "admin"
+    },
+    {
+      "kind": "logout",
+      "offset": 8396992,
+      "ts_device": "2026-03-12T10:01:24Z",
+      "user": "admin"
+    }
+  ],
+  "motion_events": [
+    {
+      "channel": 3,
+      "end_true": "2026-03-12T10:00:07Z",
+      "start_true": "2026-03-12T10:00:03Z"
+    }
+  ],
+  "recordings": [
+    {
+      "byte_ranges": [
+        [
+          8192,
+          125746
+        ]
+      ],
+      "channel": 1,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:12Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          1056768,
+          135632
+        ]
+      ],
+      "channel": 2,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:12Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          2105344,
+          149154
+        ]
+      ],
+      "channel": 3,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:12Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          3153920,
+          133277
+        ]
+      ],
+      "channel": 4,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:12Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4202496,
+          134516
+        ]
+      ],
+      "channel": 1,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:24Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          5251072,
+          123974
+        ]
+      ],
+      "channel": 2,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:24Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          6299648,
+          125315
+        ]
+      ],
+      "channel": 3,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:24Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          7348224,
+          136158
+        ]
+      ],
+      "channel": 4,
+      "deleted": false,
+      "end_device": "2026-03-12T10:00:24Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:00:12Z"
+    }
+  ],
+  "seizure": {
+    "dvr_displayed": "2026-03-12T16:35:36",
+    "reference": "2026-03-12T16:30:24+05:30"
+  },
+  "sha256": "6e7d14e65b8c11db46c1907b738bab95e955654d26daaf3b863eed38db76c8a7",
+  "tier": "A"
+}
