@@ -1,0 +1,20 @@
+{
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 380,
+  "input_tokens": 420,
+  "model": "claude-haiku-4-5-20251001",
+  "output_tokens": 38,
+  "stop_reason": "tool_use",
+  "text": "",
+  "tool_calls": [
+    {
+      "id": "toolu_query_demo",
+      "input": {
+        "channels": [
+          2
+        ]
+      },
+      "name": "search_evidence"
+    }
+  ]
+}

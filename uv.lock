@@ -2259,6 +2259,16 @@ source = { editable = "packages/export" }
 name = "pramaan-formats"
 version = "0.1.0"
 source = { editable = "packages/formats" }
+dependencies = [
+    { name = "pramaan-core" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pramaan-core", editable = "packages/core" },
+    { name = "pyyaml", specifier = ">=6.0,<7" },
+]
 
 [[package]]
 name = "pramaan-llm"

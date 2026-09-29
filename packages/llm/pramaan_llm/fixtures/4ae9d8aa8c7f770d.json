@@ -1,0 +1,10 @@
+{
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 260,
+  "input_tokens": 310,
+  "model": "claude-sonnet-5",
+  "output_tokens": 96,
+  "stop_reason": "end_turn",
+  "text": "This layout was inferred from a small, unrecognised header. The magic bytes and channel field have high confidence; the timestamp field's confidence is lower and should be checked by hand against a known recording before relying on it.\n\n- timestamp: confirm the unit (seconds vs. milliseconds) against a recording with a known start time.\n- length: confirm this bounds the payload, not the whole record.",
+  "tool_calls": []
+}

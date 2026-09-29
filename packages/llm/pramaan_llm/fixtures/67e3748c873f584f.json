@@ -1,0 +1,10 @@
+{
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 540,
+  "input_tokens": 610,
+  "model": "claude-sonnet-5",
+  "output_tokens": 54,
+  "stop_reason": "end_turn",
+  "text": "[{\"text\": \"There is a recording gap on channel 2 from 20:00 to 09:00.\", \"evidence_ids\": [\"fact_1\"]}]",
+  "tool_calls": []
+}

@@ -3,7 +3,15 @@ name = "pramaan-llm"
 version = "0.1.0"
 description = "LLMProvider, Anthropic + local providers, prompts, budget meter."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "anthropic>=0.69,<1",
+    "httpx>=0.27,<1",
+    "pydantic>=2.7,<3",
+    "pramaan-core",
+]
+
+[tool.uv.sources]
+pramaan-core = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -11,6 +19,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pramaan_llm"]
+include = [
+    "pramaan_llm/py.typed",
+    "pramaan_llm/prompts/*.md",
+    "pramaan_llm/fixtures/*.json",
+]
 
 [tool.ruff]
 line-length = 100
