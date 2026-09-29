@@ -21,10 +21,18 @@ setup:
     echo "== pnpm install (web workspace) =="
     pnpm install
     echo "== maturin develop (optional Rust extension) =="
-    if command -v cargo >/dev/null 2>&1 && command -v maturin >/dev/null 2>&1; then
-        echo "cargo + maturin available; C1 (Wave 1) wires 'maturin develop -m crates/scanner/Cargo.toml'. Skipping for now (no extension module yet)."
+    # maturin is a `uv add --dev` dependency (root pyproject.toml), installed
+    # into .venv by the `uv sync` above — never required on PATH. The
+    # `python` Cargo feature (crates/scanner/Cargo.toml) is off by default so
+    # plain `cargo build/test/clippy` never need it; only this maturin build
+    # turns it on. Run from crates/scanner/ (not the repo root) so maturin's
+    # pyproject.toml auto-discovery doesn't pick up the root workspace file,
+    # which isn't a maturin project and has no [build-system] table.
+    if command -v cargo >/dev/null 2>&1 && uv run --no-sync maturin --version >/dev/null 2>&1; then
+        echo "cargo + maturin available; building the pramaan_scanner extension (release, feature 'python')."
+        (cd crates/scanner && uv run --no-sync maturin develop --release --features python)
     elif command -v cargo >/dev/null 2>&1; then
-        echo "cargo found, maturin not installed — skipping PyO3 build. Pure-Python scanner fallback will be used (docs/05-INFRA-QA.md §2). Not auto-installing maturin (keeps setup offline-safe and disk-light)."
+        echo "cargo found, maturin not installed — skipping PyO3 build. Pure-Python scanner fallback will be used (docs/05-INFRA-QA.md §2)."
     else
         echo "cargo not found — skipping Rust build entirely. Pure-Python scanner fallback will be used."
     fi

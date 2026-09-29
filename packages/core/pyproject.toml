@@ -5,6 +5,7 @@ description = "Case model, evidence I/O, hashing, provenance records."
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.0,<2",
+    "numpy>=2.4.6",
     "pyarrow>=16,<19",
     "pydantic>=2.7,<3",
 ]

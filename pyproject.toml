@@ -57,6 +57,7 @@ dev = [
     "pre-commit>=3.7",
     "httpx>=0.27,<1",
     "jsonschema>=4.21,<5",
+    "maturin>=1.15.0",
 ]
 
 # Heavy ML/CV dependencies (torch, paddleocr, ultralytics, opencv-contrib, ...)
@@ -90,4 +91,27 @@ exclude = ["packages/formats/pramaan_formats/generated"]
 # either and is only ever imported inside a try/except ImportError guard.
 [[tool.mypy.overrides]]
 module = ["pyarrow.*", "pyewf.*"]
+ignore_missing_imports = true
+
+# pramaan_scanner (crates/scanner, C1) is a compiled PyO3 extension with no
+# stub package; it's optional at runtime (pramaan_core.scan falls back to
+# pure Python when it isn't built) and only ever imported lazily inside a
+# try/except ImportError guard in pramaan_core/scan.py.
+[[tool.mypy.overrides]]
+module = ["pramaan_scanner.*"]
+ignore_missing_imports = true
+
+# pytesseract ships no py.typed marker / stubs. paddleocr / rapidocr_onnxruntime
+# are optional OCR engines (docs/03-AI-TIMELINE.md §4, packages/timeline) that
+# are not installed by `just setup` (see the "Heavy ML/CV dependencies" note
+# above) and are only ever imported lazily inside a try/except ImportError
+# guard in packages/timeline/pramaan_timeline/osd.py.
+[[tool.mypy.overrides]]
+module = ["pytesseract.*", "paddleocr.*", "rapidocr_onnxruntime.*"]
+ignore_missing_imports = true
+
+# dramatiq ships no py.typed marker / stubs. Used by apps/worker's
+# JOB_BACKEND=dramatiq path (docs/02-BACKEND.md §3, task B1).
+[[tool.mypy.overrides]]
+module = ["dramatiq.*"]
 ignore_missing_imports = true
