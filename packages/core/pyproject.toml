@@ -3,7 +3,11 @@ name = "pramaan-core"
 version = "0.1.0"
 description = "Case model, evidence I/O, hashing, provenance records."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "duckdb>=1.0,<2",
+    "pyarrow>=16,<19",
+    "pydantic>=2.7,<3",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -11,6 +15,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pramaan_core"]
+# schema.sql lives inside the package dir but isn't a .py file; force it into
+# the wheel regardless of VCS-ignore state (hatchling's default wheel
+# selection can otherwise miss non-Python data files).
+artifacts = ["pramaan_core/schema.sql"]
 
 [tool.ruff]
 line-length = 100

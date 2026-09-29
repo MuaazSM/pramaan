@@ -82,3 +82,10 @@ testpaths = ["tests"]
 strict = true
 python_version = "3.11"
 exclude = ["packages/formats/pramaan_formats/generated"]
+
+# pyarrow ships no py.typed marker / stubs as of the pinned version; pyewf
+# (optional E01 dependency, docs/01-FORENSIC-CORE.md §4.1/§6) has no stubs
+# either and is only ever imported inside a try/except ImportError guard.
+[[tool.mypy.overrides]]
+module = ["pyarrow.*", "pyewf.*"]
+ignore_missing_imports = true
