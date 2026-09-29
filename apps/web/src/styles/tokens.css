@@ -1,0 +1,158 @@
+/*
+ * Pramaan design tokens — source of truth for apps/web.
+ * Import once at the app root; Tailwind v4 reads the @theme block below.
+ * Dark is the default; add data-theme="light" on <html> for light mode.
+ */
+
+:root,
+[data-theme="dark"] {
+  /* Graphite neutrals */
+  --ink-950: #07080b;
+  --ink-900: #0b0d12;
+  --ink-850: #10131a;
+  --ink-800: #151922;
+  --ink-700: #1e2330;
+  --ink-600: #2a3142;
+  --ink-500: #3b4458;
+  --ink-400: #5b6479;
+  --ink-300: #8a93a6;
+  --ink-200: #b7becc;
+  --ink-100: #dde1e8;
+  --ink-50: #f3f5f8;
+
+  /* Seal Indigo */
+  --brand-300: #b4b5ff;
+  --brand-400: #8b8dff;
+  --brand-500: #6e6cf5;
+  --brand-600: #5451d6;
+  --brand-900: #1c1b4a;
+
+  /* Evidence semantics */
+  --ok: #2bd4b4;
+  --warn: #f5b041;
+  --danger: #f2555a;
+  --recovered: #e26bf0;
+  --inferred: #8b8dff;
+  --ai: #b18cff;
+
+  /* Channels */
+  --ch-1: #6e9bff;
+  --ch-2: #2bd4b4;
+  --ch-3: #f5b041;
+  --ch-4: #e26bf0;
+  --ch-5: #7dd87d;
+  --ch-6: #ff8a65;
+  --ch-7: #4fc3f7;
+  --ch-8: #c9a7ff;
+
+  /* Semantic roles (dark) */
+  --bg: var(--ink-950);
+  --canvas: var(--ink-900);
+  --panel: var(--ink-850);
+  --card: var(--ink-800);
+  --control: var(--ink-700);
+  --line: rgba(255, 255, 255, 0.06);
+  --line-strong: rgba(255, 255, 255, 0.11);
+  --text: var(--ink-100);
+  --text-2: var(--ink-300);
+  --text-3: var(--ink-400);
+  --text-disabled: var(--ink-500);
+  --accent: var(--brand-500);
+  --accent-text: var(--brand-400);
+  --focus: var(--brand-300);
+  --selected: color-mix(in oklab, var(--brand-500) 16%, transparent);
+  --ok-tint: color-mix(in oklab, var(--ok) 14%, transparent);
+  --warn-tint: color-mix(in oklab, var(--warn) 14%, transparent);
+  --danger-tint: color-mix(in oklab, var(--danger) 14%, transparent);
+  --recovered-tint: color-mix(in oklab, var(--recovered) 14%, transparent);
+  --ai-tint: color-mix(in oklab, var(--ai) 12%, transparent);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  /* Type */
+  --font-sans: "Geist", "Geist Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 32px;
+  --text-4xl: 40px;
+
+  /* Shape */
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-panel: 14px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #ffffff;
+  --canvas: var(--ink-50);
+  --panel: #ffffff;
+  --card: #ffffff;
+  --control: #eef0f4;
+  --line: rgba(11, 13, 18, 0.08);
+  --line-strong: rgba(11, 13, 18, 0.14);
+  --text: var(--ink-900);
+  --text-2: var(--ink-400);
+  --text-3: var(--ink-300);
+  --text-disabled: var(--ink-200);
+  --accent: var(--brand-600);
+  --accent-text: var(--brand-600);
+  --focus: var(--brand-500);
+  --shadow-pop: 0 12px 32px rgba(11, 13, 18, 0.12);
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+}
+
+/* Tailwind v4 bridge: exposes tokens as utilities (bg-panel, text-text-2, border-line, …) */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-card: var(--card);
+  --color-control: var(--control);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-recovered: var(--recovered);
+  --color-inferred: var(--inferred);
+  --color-ai: var(--ai);
+  --color-ch-1: var(--ch-1);
+  --color-ch-2: var(--ch-2);
+  --color-ch-3: var(--ch-3);
+  --color-ch-4: var(--ch-4);
+  --color-ch-5: var(--ch-5);
+  --color-ch-6: var(--ch-6);
+  --color-ch-7: var(--ch-7);
+  --color-ch-8: var(--ch-8);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-panel: var(--radius-panel);
+}
