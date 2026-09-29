@@ -3,7 +3,23 @@ name = "pramaan-timeline"
 version = "0.1.0"
 description = "Four-clock normalisation, OCR, correlation."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pramaan-core",
+    "numpy>=1.26,<3",
+    "pillow>=10.3,<12",
+    "pytesseract>=0.3.10,<0.4",
+    "pyarrow>=16,<19",
+]
+
+# Heavy OCR engines (docs/03-AI-TIMELINE.md §4). PaddleOCR pulls in
+# paddlepaddle (multi-GB with its CUDA/MKL wheels); RapidOCR pulls in
+# onnxruntime + opencv. Neither is installed by `just setup` (root
+# pyproject.toml's "Heavy ML/CV dependencies" note, docs/progress/W0.1.md).
+# `OsdReader` imports both lazily and reports them unavailable with a clear
+# reason when these extras are not installed — see docs/progress/A1.md.
+[project.optional-dependencies]
+paddle = ["paddleocr>=2.7,<3", "paddlepaddle>=2.6,<3"]
+rapidocr = ["rapidocr-onnxruntime>=1.3,<2"]
 
 [build-system]
 requires = ["hatchling"]
@@ -11,6 +27,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pramaan_timeline"]
+artifacts = ["pramaan_timeline/assets/DejaVuSansMono.ttf"]
 
 [tool.ruff]
 line-length = 100
@@ -22,3 +39,6 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 strict = true
 python_version = "3.11"
+
+[tool.uv.sources]
+pramaan-core = { workspace = true }
