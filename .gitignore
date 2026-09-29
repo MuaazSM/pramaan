@@ -20,6 +20,8 @@ target/
 # --- Node / pnpm (apps/web) ---
 node_modules/
 dist/
+dist-mock/
+*.tsbuildinfo
 build/
 .vite/
 .turbo/
