@@ -133,39 +133,6 @@
         "title": "AssistantDraftRequest",
         "type": "object"
       },
-      "AssistantExplainRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "layout_id": {
-            "title": "Layout Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "layout_id"
-        ],
-        "title": "AssistantExplainRequest",
-        "type": "object"
-      },
-      "AssistantExplainResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "explanation": {
-            "title": "Explanation",
-            "type": "string"
-          },
-          "label": {
-            "default": "AI draft \u2014 examiner must verify",
-            "title": "Label",
-            "type": "string"
-          }
-        },
-        "required": [
-          "explanation"
-        ],
-        "title": "AssistantExplainResponse",
-        "type": "object"
-      },
       "AssistantQueryRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3131,59 +3098,6 @@
           }
         },
         "summary": "Assistant Draft",
-        "tags": [
-          "assistant"
-        ]
-      }
-    },
-    "/api/cases/{cid}/assistant/explain": {
-      "post": {
-        "description": "docs/03-AI-TIMELINE.md \u00a78.3.3: explain an ``InferredLayout``'s field\nstatistics in plain language. Additive endpoint (not in the W0.3 stub).",
-        "operationId": "assistant_explain_api_cases__cid__assistant_explain_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cid",
-            "required": true,
-            "schema": {
-              "title": "Cid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AssistantExplainRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AssistantExplainResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Assistant Explain",
         "tags": [
           "assistant"
         ]
