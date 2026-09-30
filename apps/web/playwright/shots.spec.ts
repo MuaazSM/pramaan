@@ -48,6 +48,11 @@ const ROUTES: { name: string; path: string; ready?: (page: Page) => Promise<void
   // otherwise never appears in any other screenshot in this repo.
   { name: "prove-it", path: `/cases/${CASE_ID}/frames/${FRAME_ID}/prove`, ready: login },
   { name: "prove-it-mismatch", path: `/cases/${CASE_ID}/frames/${MISMATCH_FRAME_ID}/prove`, ready: login },
+  // F4: reports, exports, custody, settings (docs/progress/F4.md).
+  { name: "reports", path: `/cases/${CASE_ID}/reports`, ready: login },
+  { name: "exports", path: `/cases/${CASE_ID}/exports`, ready: login },
+  { name: "custody", path: `/cases/${CASE_ID}/custody`, ready: login },
+  { name: "settings", path: "/settings", ready: login },
   { name: "design-gallery", path: "/design", ready: login },
 ];
 

@@ -34,7 +34,11 @@ test.describe("F3b mock e2e", () => {
     // appears, lowercase, inside the frame-context panel's "Header / payload offset" field).
     const fieldsPanel = page.locator("section", { has: page.getByRole("heading", { name: "Fields" }) });
     await expect(fieldsPanel.getByText("Vendor header")).toBeVisible();
-    await expect(fieldsPanel.getByText("Start code")).toBeVisible();
+    // Scoped to the field row's own button (not `getByText`, which also matches the decoded
+    // "Annex-B start code (...)" description paragraph below it now that the mock bytes plant a
+    // real Annex-B start code at this field's offset — see src/mocks/prove-fixtures.ts and
+    // docs/progress/F4.md "Fixed" — both places legitimately say "start code", by design).
+    await expect(fieldsPanel.getByRole("button", { name: /start code/i })).toBeVisible();
     await expect(fieldsPanel.getByText("Payload", { exact: true })).toBeVisible();
 
     // Live SHA-256 recompute settles to verified (this frame's mock hash always matches). Both

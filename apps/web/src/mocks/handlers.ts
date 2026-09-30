@@ -26,6 +26,13 @@ import { reviewHandlers } from "./review-handlers";
 // Prove-it / frame inspector (F3b) handlers — frame hex view + thumbnail. Own module per F3b's
 // ownership (src/mocks/prove-fixtures.ts / prove-handlers.ts); spread into the shared array below.
 import { proveHandlers } from "./prove-handlers";
+// F4 (reports/exports/custody/settings/assistant) — each screen's mocks live in their own module
+// per the same convention as review/prove above; spread into the shared array below.
+import { reportsHandlers } from "./reports-handlers";
+import { exportsHandlers } from "./exports-handlers";
+import { custodyHandlers } from "./custody-handlers";
+import { settingsHandlers } from "./settings-handlers";
+import { assistantHandlers } from "./assistant-handlers";
 
 type Job = components["schemas"]["Job"];
 type JobStage = components["schemas"]["JobStage"];
@@ -276,7 +283,17 @@ const httpHandlers = [
   }),
 ];
 
-export const handlers = [...httpHandlers, ...reviewHandlers, ...wsHandlers, ...proveHandlers];
+export const handlers = [
+  ...httpHandlers,
+  ...reviewHandlers,
+  ...wsHandlers,
+  ...proveHandlers,
+  ...reportsHandlers,
+  ...exportsHandlers,
+  ...custodyHandlers,
+  ...settingsHandlers,
+  ...assistantHandlers,
+];
 
 function hashCode(s: string): number {
   let h = 0;

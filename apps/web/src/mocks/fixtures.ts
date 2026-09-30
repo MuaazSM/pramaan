@@ -260,7 +260,7 @@ export const FINGERPRINT_BY_EVIDENCE: Record<string, VendorMatch[]> = {
       tier: "A",
       confidence: 0.97,
       evidence: ["index signature at LBA 63", "channel table magic 0x4849 4B56", "4 channel descriptors, 60 recordings indexed"],
-      model: "DS-7204HH-K1 layout, synthetic — rebrand pattern modelled: sold as Hikvision, Prama, Dahua",
+      model: "DS-7204HH-K1 layout, synthetic — modelled on Hikvision-style layout; rebrands such as Prama (synthetic)",
       serial: "HS4CH-20260118-0042",
       fs_version: "hiksim-fs v3",
     },

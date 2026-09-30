@@ -67,11 +67,21 @@ export function buildFrameHexFixture(frame: FrameRef, before: number, after: num
   const headerLen = Math.max(0, frame.payload_offset - start);
   const length = headerLen + after;
   const bytes = syntheticBytes(`${frame.frame_id}:${start}:${length}`, length);
+  const startCodeOffset = Math.max(headerLen - 4, 0);
+  const startCodeLength = Math.min(4, headerLen);
   const annotations: FrameHexAnnotation[] = [
     { name: "vendor_header", offset: 0, length: headerLen },
-    { name: "start_code", offset: Math.max(headerLen - 4, 0), length: Math.min(4, headerLen) },
+    { name: "start_code", offset: startCodeOffset, length: startCodeLength },
     { name: "payload", offset: headerLen, length: after },
   ];
+  // Plant a real Annex-B start code where the `start_code` field points (00 00 00 01, or the
+  // trailing bytes of it if the window is too narrow for the full 4 bytes) — codec-decode.ts
+  // decodes this field from the literal bytes (public H.264/H.265 structure, CLAUDE.md rule 7),
+  // so the mock bytes must actually contain one, not just synthetic noise the decoder happens to
+  // read past.
+  const ANNEX_B_START_CODE = [0x00, 0x00, 0x00, 0x01];
+  const startCodeBytes = ANNEX_B_START_CODE.slice(4 - startCodeLength);
+  bytes.set(startCodeBytes, startCodeOffset);
   return { offset: start, bytes, annotations };
 }
 

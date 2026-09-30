@@ -15,3 +15,22 @@ export function buildFrameIndex(frames: FrameRef[]): FrameRefIndex {
   }
   return { byId };
 }
+
+/**
+ * Nearest frame on `channel` to `targetUs` (by `ts_header_us`), for the frame inspector slot.
+ * Linear scan — fine at review-workspace scale; ties resolve to the earlier frame in array order.
+ * Returns `null` when the channel has no frame with a header timestamp.
+ */
+export function nearestFrameId(frames: FrameRef[], channel: number, targetUs: number): string | null {
+  let bestId: string | null = null;
+  let bestDelta = Infinity;
+  for (const f of frames) {
+    if (f.channel !== channel || f.ts_header_us == null) continue;
+    const delta = Math.abs(f.ts_header_us - targetUs);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestId = f.frame_id;
+    }
+  }
+  return bestId;
+}

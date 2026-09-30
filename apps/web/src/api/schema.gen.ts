@@ -780,6 +780,8 @@ export interface components {
     schemas: {
         /** AnalyticsRunRequest */
         AnalyticsRunRequest: {
+            /** Evidence Id */
+            evidence_id?: string | null;
             /** Stages */
             stages?: string[] | null;
         };
@@ -1063,8 +1065,8 @@ export interface components {
             /** Score */
             score: number;
         };
-        /** DraftSentence */
-        DraftSentence: {
+        /** DraftSentenceOut */
+        DraftSentenceOut: {
             /** Evidence Ids */
             evidence_ids: string[];
             /** Text */
@@ -1100,7 +1102,14 @@ export interface components {
             /** Path */
             path: string;
         };
-        /** EvidenceSearchFilter */
+        /**
+         * EvidenceSearchFilter
+         * @description Arguments the model must supply to ``search_evidence``. Field names
+         *     and semantics match docs/03-AI-TIMELINE.md §8.3.1 exactly, and this is
+         *     the same shape ``apps/api/pramaan_api/routers/assistant.py`` exposes in
+         *     ``AssistantQueryResponse.filter`` — the router imports this class
+         *     instead of redefining it.
+         */
         EvidenceSearchFilter: {
             /** Channels */
             channels?: number[] | null;
@@ -1486,7 +1495,10 @@ export interface components {
              */
             include_thumbnails: boolean;
         };
-        /** ReportFact */
+        /**
+         * ReportFact
+         * @description One fact from the report manifest (docs/03-AI-TIMELINE.md §8.3.2).
+         */
         ReportFact: {
             /** Id */
             id: string;
@@ -1930,7 +1942,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DraftSentence"][];
+                    "application/json": components["schemas"]["DraftSentenceOut"][];
                 };
             };
             /** @description Validation Error */

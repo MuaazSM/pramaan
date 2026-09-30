@@ -124,7 +124,7 @@ export function ReviewWorkspace({ caseId }: { caseId: string }) {
           <TimelineCanvas channels={channels} markers={markers} />
         </div>
       </div>
-      <InspectorSlot />
+      <InspectorSlot caseId={caseId} frames={framesQuery.data ?? []} />
     </div>
   );
 }

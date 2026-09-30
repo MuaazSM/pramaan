@@ -1,22 +1,28 @@
-/** /cases/$cid/custody — Custody chain. Designed placeholder for this wave. */
+/**
+ * /cases/$cid/custody — Custody chain.
+ * Primary action: Re-verify chain. Hash-chained audit timeline (cursor-paginated), verification
+ * result, and Merkle anchors (local / Fabric) with create-anchor.
+ * Reference products studied: Sentry (event breadcrumbs / timeline of events in an issue detail).
+ */
 import { createFileRoute } from "@tanstack/react-router";
-import { Landmark } from "lucide-react";
-import { PlaceholderScreen } from "@/components/shell/placeholder-screen";
+import { ScreenShell } from "@/components/shell/screen-shell";
+import { CustodyScreen } from "@/features/custody/custody-screen";
+import { useCaseLabel } from "@/api/labels";
 
 export const Route = createFileRoute("/_app/cases/$cid/custody")({
-  component: CustodyPlaceholder,
+  component: CustodyRoute,
 });
 
-function CustodyPlaceholder() {
-    const { cid } = Route.useParams();
-    return (
-      <PlaceholderScreen
-        segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Custody" }]}
-        caseId={cid}
-        icon={Landmark}
-        title="Custody"
-        description="Breadcrumb-style audit timeline, a chain verification result, and anchors (local / Fabric) with their Merkle roots. The case overview already surfaces the chain head in its footer strip."
-        owner="WEB (Wave 2)"
-      />
-    );
+function CustodyRoute() {
+  const { cid } = Route.useParams();
+  const caseLabel = useCaseLabel(cid);
+  return (
+    <ScreenShell
+      segments={[{ label: "Cases", to: "/cases" }, { label: caseLabel, to: `/cases/${cid}` }, { label: "Custody" }]}
+      caseId={cid}
+      showCustodySeal
+    >
+      <CustodyScreen caseId={cid} />
+    </ScreenShell>
+  );
 }

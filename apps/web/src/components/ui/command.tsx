@@ -59,7 +59,7 @@ export function CommandItem({ className, ...props }: React.ComponentPropsWithout
     <CommandPrimitive.Item
       className={cn(
         "relative flex cursor-pointer select-none items-center gap-2 rounded-[var(--radius-control)] px-2 py-2 text-[13px] outline-none",
-        "aria-selected:bg-control aria-selected:text-text data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
+        "aria-selected:bg-control aria-selected:text-text data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-40",
         "[&_svg]:size-4 [&_svg]:text-text-3",
         className,
       )}
