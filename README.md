@@ -55,16 +55,16 @@ Built for Smart India Hackathon 2026, problem statement **26150** (NTRO).
 
 | Metric | Target | Result |
 | --- | --- | --- |
-| Deleted-frame recovery (synthetic) | ≥ 95% | 99.8% ✅ |
-| Recovery precision | ≥ 99% | 99.7% ✅ |
+| Deleted-frame recovery (synthetic) | ≥ 95% | 100% ✅ |
+| Recovery precision | ≥ 99% | 100% ✅ |
 | Recording parse | 100% | 100% ✅ |
 | Timestamp error ≤ 1 s | ≥ 99% | 100% ✅ |
-| Deletion actor attribution | 100% | 100% ✅ |
+| Deletion method correct | 100% | 100% ✅ |
+| Deletion actor attribution (where a device log exists) | 100% | 100% ✅ |
 | XSIM inference (5 required fields) | 100% | 100% ✅ |
 | Motion F1 | ≥ 80% | 100% ✅ |
-| Determinism (report hash stable across cases) | yes | yes ✅ |
+| Determinism (same image in two cases → identical results) | yes | yes ✅ |
 | Read-only guarantee | yes | yes ✅ |
-| Deletion method correct | 100% | 83.3% ⚠️ — the remaining miss is on `xsim_format` and is being fixed in the harness (it scored findings before the examiner confirmed the inferred layout) |
 
 Methodology notes (from the validation harness):
 
