@@ -5,27 +5,44 @@
 
     detect_deletions(*, image_id, recordings, frames, log_events) -> list[DeletionFinding]
 
-It only sees what B2's pipeline persists — the *live* index
-(``recordings``, ``source="index"``, always ``deleted=False``, per
-``VendorParser.list_recordings``'s own contract), every ``FrameRef`` found
-by any stage (live *and* carved — carved frames carry ``deleted=True``),
-and ``LogEvent``s. There is no family-specific ``index_state()`` here, so
-every rule below is expressed purely in terms of those three generic
-inputs — deliberately, since that's what keeps this module usable for a
-family with a live vendor parser (HIKSIM/DHSIM/HWSIM) *and* a Tier-B
-inferred one (XSIM) behind the same call.
+It only sees what B2's pipeline persists — ``recordings`` (every
+``Recording`` the caller knows about for this image; each carries its own
+``deleted`` flag), every ``FrameRef`` found by any stage (live *and*
+carved — carved frames carry ``deleted=True``), and ``LogEvent``s. There
+is no family-specific ``index_state()`` here, so every rule below is
+expressed purely in terms of those three generic inputs — deliberately,
+since that's what keeps this module usable for a family with a live
+vendor parser (HIKSIM/DHSIM/HWSIM, whose ``recordings`` are always
+``source="index", deleted=False`` per ``VendorParser.list_recordings``'s
+own contract) *and* a Tier-B inferred one (XSIM, whose caller —
+apps/worker's ``parse_inferred_layout``, FIX-7 — has no native index at
+all and so hands this module ``recordings`` for *every* discovered run on
+a channel, live and already-deleted mixed together, ``source="inferred"``)
+behind the same call. Every "live recording" computation below therefore
+explicitly filters to ``not r.deleted`` rather than assuming the list it
+was given contains only those (FIX-7: that assumption held for every
+native-parser family but silently broke XSIM's format-vs-expiry
+classification, since an older deleted run's own start was being read as
+"the earliest live recording").
 
 Two independent signals produce a finding for a channel:
 
 1. **Direct evidence** (``_channel_evidence_finding``): deleted frames were
    actually recovered (via a live index confirming they're no longer
    referenced, or via carving). Grouped into continuous runs (gap <= 5 s,
-   docs/01-FORENSIC-CORE.md §4.10), classified ``format`` vs ``expiry`` by
+   docs/01-FORENSIC-CORE.md §4.10) to classify ``format`` vs ``expiry`` by
    whether an ``hdd_format`` log event correlates, else by whether the
    live index resumes immediately (expiry: a rolling FIFO prune, no
    downtime) or only after a large gap (format: an admin action, even
    without log evidence — e.g. HWSIM, which has no documented log format
-   at all, docs/01-FORENSIC-CORE.md §4.9).
+   at all, docs/01-FORENSIC-CORE.md §4.9). When a channel's disk history
+   holds *more than one* deleted run before the live recording (observed
+   on ``xsim_format``: a single format wipe can leave more than one
+   gap-separated run of recoverable bytes behind), the reported window
+   spans every recovered deleted frame on that channel, not just the run
+   nearest the live boundary — real, already-available evidence, not an
+   extrapolation — while the gap used to pick format-vs-expiry still comes
+   from the run nearest the live boundary specifically.
 2. **Wrap-around inference** (``_wraparound_finding``): a channel with *no*
    recoverable deleted frames at all, but whose live recordings show the
    physically lowest-offset one is *not* the chronologically earliest —
@@ -187,24 +204,53 @@ def _channel_evidence_finding(
     if not del_frames:
         return None
     runs = _group_runs(del_frames, RUN_GAP_US)
-    # The run immediately preceding the earliest live recording (or, with
-    # no live recording left on this channel, the most recent run overall)
-    # is "the" deletion event; earlier runs on the same channel would be a
-    # second, older deletion event, not modelled by this corpus but handled
-    # the same way if one existed.
-    live = [r for r in recordings if r.channel == channel]
+    # "Live" here means *currently referenced by the index*
+    # (``Recording.deleted is False`` — docs/01-FORENSIC-CORE.md §4.10's own
+    # rules are all phrased in terms of the live index). For a native
+    # vendor parser (HIKSIM/DHSIM/HWSIM) every ``Recording`` this module
+    # ever receives already satisfies that (``VendorParser.list_recordings``'s
+    # contract: always ``deleted=False``), so this filter is a no-op there.
+    # It is *not* a no-op for a Tier B/inferred image (XSIM): the caller
+    # that turns an ``InferredParser``'s frame stream into ``Recording``s
+    # (apps/worker's ``parse_inferred_layout``) has no native index at all,
+    # so it emits one ``Recording`` per discovered run on a channel —
+    # older, no-longer-current runs included, marked ``deleted=True`` —
+    # in the *same* list this function receives as ``recordings``. Using
+    # that list unfiltered previously picked an older, already-deleted
+    # run's own start as "the earliest live recording", producing a
+    # negative or near-zero gap to the very evidence being classified and
+    # misreading a device-wide format wipe as continuous FIFO expiry.
+    live = [r for r in recordings if r.channel == channel and not r.deleted]
     earliest_live_start = min(
         (r.start_ts_us for r in live if r.start_ts_us is not None), default=None
     )
-    run = runs[-1]
-    start_ts = run[0].ts_header_us
-    end_ts = run[-1].ts_header_us
+    # The run immediately preceding the earliest live recording carries the
+    # evidence used to decide the gap-based method (format vs. expiry) and
+    # anchors ``end_ts``/log correlation, but when the channel's disk
+    # history holds more than one deleted run before that live recording
+    # (observed on ``xsim_format``: a device-wide format wipes *every*
+    # older run at once, not just the one immediately before the live
+    # recording), the deletion's reported window should cover every
+    # recovered deleted frame on this channel, not just the last run —
+    # nothing here is fabricated, it is evidence this function already has.
+    last_run = runs[-1]
+    start_ts = del_frames[0].ts_header_us
+    end_ts = last_run[-1].ts_header_us
     assert start_ts is not None and end_ts is not None
 
-    reasons: list[str] = [
-        f"{len(run)} deleted frame(s) recovered on channel {channel} spanning payload "
-        f"offsets {run[0].payload_offset}-{run[-1].payload_offset}",
-    ]
+    if len(runs) > 1:
+        reasons: list[str] = [
+            f"{len(del_frames)} deleted frame(s) recovered on channel {channel} across "
+            f"{len(runs)} separate runs (gap > {RUN_GAP_US / 1_000_000:.0f}s between them), "
+            f"spanning payload offsets {del_frames[0].payload_offset}-"
+            f"{del_frames[-1].payload_offset} — treated as one deletion event since nothing "
+            "survives to show a live recording in between them",
+        ]
+    else:
+        reasons = [
+            f"{len(last_run)} deleted frame(s) recovered on channel {channel} spanning payload "
+            f"offsets {last_run[0].payload_offset}-{last_run[-1].payload_offset}",
+        ]
 
     method: str
     actor: str | None
@@ -283,11 +329,11 @@ def _channel_evidence_finding(
         method=method,
         actor=actor,
         action_ts_us=action_ts_us,
-        frames_recovered=len(run),
-        bytes_recovered=sum(f.payload_len for f in run),
+        frames_recovered=len(del_frames),
+        bytes_recovered=sum(f.payload_len for f in del_frames),
         confidence=confidence,
         reasons=reasons,
-        evidence_refs=[f.frame_id for f in run],
+        evidence_refs=[f.frame_id for f in del_frames],
     )
 
 
@@ -320,8 +366,18 @@ def _align_shared_format_events(raw: dict[int, _RawFinding]) -> None:
 
 
 def _wraparound_finding(channel: int, recordings: list[Recording]) -> _RawFinding | None:
+    # Only currently-live recordings define "physically lowest offset isn't
+    # chronologically earliest" — the same live/deleted distinction
+    # ``_channel_evidence_finding`` applies (see its comment): a caller that
+    # also hands this module already-deleted ``Recording``s (e.g. an
+    # inferred/XSIM image's older runs) must not have them corrupt the
+    # live-recording ordering this signal depends on.
     live = sorted(
-        (r for r in recordings if r.channel == channel and r.start_ts_us is not None),
+        (
+            r
+            for r in recordings
+            if r.channel == channel and not r.deleted and r.start_ts_us is not None
+        ),
         key=lambda r: r.start_ts_us,  # type: ignore[arg-type,return-value]
     )
     if len(live) < 2:

@@ -15,7 +15,21 @@ honest exceptions to the +/- 5 s tolerance (see "Decisions" in
 the exact start time of a segment nothing on disk still points to is
 outside what any parser can honestly claim, so those two assertions use a
 wider, explicitly-labelled tolerance instead of silently skipping.
-"""
+
+``test_xsim_format_deletion_verdict`` (FIX-7) drives a fourth shape: a
+Tier B/inferred image has no native ``VendorParser``, so the *caller*
+(apps/worker's ``parse_inferred_layout``, docs/progress/FIX-7.md
+"Decisions") turns an ``InferredParser``'s raw frame stream into
+``Recording``s itself — one per per-channel time-gap-separated run, the
+most recent marked live (``deleted=False``), every older run marked
+``deleted=True`` — and hands *all* of them, live and deleted mixed
+together, to ``detect_deletions`` as its ``recordings`` argument. That
+mirrors the on-image shape (a single "format" action wiping an unknown
+number of older runs before the current live recording), so the helper
+below reproduces that exact construction — never importing
+``apps/worker`` itself (CORE doesn't depend on ``apps/``) — rather than
+re-testing only the native-parser shape the other cases in this file
+already cover."""
 
 from __future__ import annotations
 
@@ -25,10 +39,11 @@ from pathlib import Path
 
 import pytest
 from pramaan_core.evidence import EvidenceReader
-from pramaan_core.models import ByteRange, DeletionFinding
+from pramaan_core.ids import content_id
+from pramaan_core.models import ByteRange, DeletionFinding, FrameRef, Recording
 from pramaan_formats import registry
 from pramaan_logs import parse_logs
-from pramaan_recovery import carve, deletion, vendor_carve
+from pramaan_recovery import carve, deletion, infer, vendor_carve
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 IMAGES_DIR = REPO_ROOT / "corpus" / "images"
@@ -179,3 +194,108 @@ def test_no_false_positive_deletions_on_gensim() -> None:
 
 def test_summarize_findings_empty() -> None:
     assert deletion.summarize_findings([]) == "No deletions found."
+
+
+#: Same constant/grouping rule as apps/worker/pramaan_worker/stages.py's
+#: ``parse_inferred_layout`` (duplicated rather than imported — CORE has no
+#: dependency on ``apps/``, same reasoning as that module's own docstring).
+_INFERRED_RUN_GAP_US = 2_000_000
+
+
+def _same_inferred_run(prev: FrameRef, cur: FrameRef) -> bool:
+    if prev.ts_header_us is not None and cur.ts_header_us is not None:
+        return (cur.ts_header_us - prev.ts_header_us) <= _INFERRED_RUN_GAP_US
+    return True
+
+
+def _inferred_recordings_and_frames(
+    image_id: str, raw_frames: list[FrameRef]
+) -> tuple[list[Recording], list[FrameRef]]:
+    """Reproduce apps/worker's ``parse_inferred_layout`` grouping: per
+    channel, split frames into time-gap-separated runs; the most recent run
+    is "live" (``deleted=False``), every earlier run is ``deleted=True``.
+    Returns ``(recordings, frames)`` with *all* runs' ``Recording``s (live
+    and deleted mixed together) — the exact shape ``deletion_verdict``'s
+    real caller hands to ``detect_deletions`` for a Tier B/inferred image."""
+    by_channel: dict[int, list[FrameRef]] = {}
+    for f in raw_frames:
+        if f.channel is not None:
+            by_channel.setdefault(f.channel, []).append(f)
+
+    recordings: list[Recording] = []
+    final_frames: list[FrameRef] = []
+    for channel, chan_frames in by_channel.items():
+        chan_frames.sort(
+            key=lambda f: (f.ts_header_us if f.ts_header_us is not None else 0, f.payload_offset)
+        )
+        runs: list[list[FrameRef]] = []
+        for f in chan_frames:
+            if runs and _same_inferred_run(runs[-1][-1], f):
+                runs[-1].append(f)
+            else:
+                runs.append([f])
+        if not runs:
+            continue
+        live_run = runs[-1]
+        for run in runs:
+            deleted = run is not live_run
+            start = min(fr.payload_offset for fr in run)
+            end = max(fr.payload_offset + fr.payload_len for fr in run)
+            ts_values = [fr.ts_header_us for fr in run if fr.ts_header_us is not None]
+            rec_id = content_id(
+                "rec",
+                {"image_id": image_id, "channel": channel, "start": start, "source": "inferred"},
+            )
+            recordings.append(
+                Recording(
+                    id=rec_id,
+                    image_id=image_id,
+                    channel=channel,
+                    stream="main",
+                    start_ts_us=min(ts_values) if ts_values else None,
+                    end_ts_us=max(ts_values) if ts_values else None,
+                    byte_ranges=[ByteRange(offset=start, length=end - start)],
+                    source="inferred",
+                    deleted=deleted,
+                )
+            )
+            final_frames.extend(
+                fr.model_copy(update={"recording_id": rec_id, "deleted": deleted}) for fr in run
+            )
+    return recordings, final_frames
+
+
+@pytest.mark.slow
+def test_xsim_format_deletion_verdict() -> None:
+    """FIX-7: method must be derived from the inferred layout + the
+    unindexed/overwritten state actually observed in ``frames`` — never
+    from generator code (blind-inference rule, docs/01-FORENSIC-CORE.md
+    §4.6 "XSIM"). Truth (readable per the task's carve-out) has no logged
+    actor for this scenario's deletions either, so both sides agree here:
+    ``actor is None``."""
+    if not (IMAGES_DIR / "xsim_format.img").exists():
+        pytest.skip("corpus/images/xsim_format.img not generated yet — run `just corpus` first")
+    with EvidenceReader.open(str(IMAGES_DIR / "xsim_format.img")) as r:
+        layout = infer.infer_layout(r)
+        assert layout is not None
+        parser = infer.InferredParser(layout)
+        image_id = "img_xsim_format_test"
+        raw_frames = list(parser.iter_frames(r, image_id))
+    recordings, frames = _inferred_recordings_and_frames(image_id, raw_frames)
+    findings = deletion.detect_deletions(
+        image_id=image_id, recordings=recordings, frames=frames, log_events=[]
+    )
+    truth = json.loads((TRUTH_DIR / "xsim_format.json").read_text())["deletions"]
+    assert len(findings) == len(truth) == 4
+
+    findings_by_channel = {f.channel: f for f in findings}
+    for t in truth:
+        f = findings_by_channel[t["channel"]]
+        assert f.method == t["method"] == "format"
+        assert t["actor"] is None
+        assert f.actor is None
+        want_start = _iso_to_us(t["start_device"])
+        want_end = _iso_to_us(t["end_device"])
+        assert abs(f.start_ts_us - want_start) <= NO_EVIDENCE_TOLERANCE_US
+        assert abs(f.end_ts_us - want_end) <= TIME_TOLERANCE_US
+        assert f.frames_recovered > 0
