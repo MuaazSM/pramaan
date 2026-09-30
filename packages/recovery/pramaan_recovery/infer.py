@@ -192,6 +192,49 @@ def _entropy_and_mode(values: list[int]) -> tuple[float, int]:
     return entropy, mode
 
 
+#: FIX-9: how much of a candidate 2-byte pairing's observed value range is
+#: actually "filled in" by distinct values. High for a genuine small
+#: enumerated field (e.g. channel ids 0..3 pack into a tiny, dense range);
+#: near zero for an accidental pairing of a byte that's constant *only
+#: because every sampled record happens to share the same channel/stream*
+#: with an unrelated neighbouring byte.
+_FIELD_LIKE_MIN_CARDINALITY = 2
+_FIELD_LIKE_MAX_CARDINALITY = 64
+_FIELD_LIKE_DENSITY_MIN = 0.3
+
+
+def _pair_density(values: list[int]) -> float:
+    card = len(set(values))
+    if card < _FIELD_LIKE_MIN_CARDINALITY or card > _FIELD_LIKE_MAX_CARDINALITY:
+        return 0.0
+    value_range = max(values) - min(values) + 1
+    return card / value_range
+
+
+def _extension_absorbs_a_field(samples: list[_Sample], p: int, q: int) -> bool:
+    """True if window positions ``(p, q)`` (``q == p + 1``, both within
+    ``WINDOW``) look, per-sample, like they belong to a real small
+    enumerated field in *either* byte order — using each sample's own raw
+    byte values, not the per-position mode ``_detect_magic`` uses to find
+    the low-entropy run itself.
+
+    This is what tells apart two things that look identical at the single-
+    byte, cross-sample-mode level: a byte that is genuinely part of a fixed
+    magic string, and a byte that is merely constant *across the sampled
+    records* because it happens to be (say) a channel id's high byte and
+    every sampled record happens to use a channel number < 256. Pairing it
+    with its immediate neighbour and checking density in both orders
+    separates the two: a true magic byte paired with the next (real) field
+    byte lands on values with no consistent small/dense structure, while a
+    constant-high-byte-of-a-small-field paired with its own low byte lands
+    exactly on the small, dense value set the real field takes."""
+    be = [(s.window[p] << 8) | s.window[q] for s in samples]
+    le = [(s.window[q] << 8) | s.window[p] for s in samples]
+    return (
+        _pair_density(be) >= _FIELD_LIKE_DENSITY_MIN or _pair_density(le) >= _FIELD_LIKE_DENSITY_MIN
+    )
+
+
 def _detect_magic(samples: list[_Sample]) -> tuple[bytes, int] | None:
     n = len(samples)
     if n == 0:
@@ -216,9 +259,21 @@ def _detect_magic(samples: list[_Sample]) -> tuple[bytes, int] | None:
 
     run_end = run_start + MIN_MAGIC_RUN
     while run_end < WINDOW and per_pos_entropy[run_end] < MAGIC_ENTROPY_MAX:
+        # FIX-9: don't blindly absorb a low-entropy byte into the magic —
+        # check whether it, paired with its neighbour, looks like a real
+        # small enumerated field first (see `_extension_absorbs_a_field`).
+        # If it does, this byte is conservatively left *out* of the magic
+        # and becomes available for field scoring instead (docs/
+        # 01-FORENSIC-CORE.md §4.8: magic detection must not mistake a
+        # field byte that's constant across the *sample* for part of the
+        # signature).
+        if run_end + 1 < WINDOW and _extension_absorbs_a_field(samples, run_end, run_end + 1):
+            break
         run_end += 1
     # Also try extending left, in case the minimal 3-run landed mid-magic.
     while run_start > 0 and per_pos_entropy[run_start - 1] < MAGIC_ENTROPY_MAX:
+        if run_start - 2 >= 0 and _extension_absorbs_a_field(samples, run_start - 2, run_start - 1):
+            break
         run_start -= 1
 
     candidate_magic = bytes(per_pos_mode[run_start:run_end])
@@ -383,6 +438,40 @@ class _Candidate:
     series: list[int]
 
 
+def _candidate_quality_key(c: _Candidate) -> tuple[int, float, int]:
+    """FIX-9 tie-break for channel-shaped candidates: prefer the narrower,
+    denser, smaller-valued field — the profile of a genuine small
+    enumerated id — over an accidental wider/sparser byte range that
+    coincidentally scores just as well (docs/01-FORENSIC-CORE.md §4.8:
+    "test both byte orders ... pick the one whose values are small and
+    dense"). Sorts ascending; a smaller tuple is higher quality."""
+    card = len(set(c.series))
+    value_range = (max(c.series) - min(c.series) + 1) if c.series else 1
+    density = card / value_range if value_range else 0.0
+    max_value = max(c.series) if c.series else 0
+    return (c.width, -density, max_value)
+
+
+def _has_constant_significant_byte(c: _Candidate, samples: list[_Sample], header_len: int) -> bool:
+    """FIX-9: true when this candidate's most-significant byte (leftmost
+    for ``be``, rightmost for ``le``) is the *same value in every sample*.
+
+    This is the general form of the magic-absorption bug the channel field
+    hit: a wider candidate whose leading byte never actually carries
+    information (it's constant only because it happens to be constant
+    across the *sampled* records, e.g. a length/sequence value that never
+    needed its top byte in this corpus) will score identically to the
+    true, narrower field one byte or more to its right — both candidates
+    exist independently in ``_all_candidates``'s output, so this flags the
+    padded one without needing to compare candidates pairwise."""
+    if c.width < 2 or not c.series:
+        return False
+    local = (WINDOW - header_len) + c.offset
+    msb_local = local if c.endian == "be" else local + c.width - 1
+    values = {s.window[msb_local] for s in samples}
+    return len(values) <= 1
+
+
 def _all_candidates(
     samples: list[_Sample], header_len: int, magic_range: tuple[int, int]
 ) -> list[_Candidate]:
@@ -422,7 +511,8 @@ def infer_layout(reader: EvidenceReader) -> InferredLayout | None:
     candidates = _all_candidates(samples, header_len, magic_span)
     channel_candidates = [c for c in candidates if _cardinality_ok(c.series)]
 
-    ts_best: tuple[_Candidate, float, int, Literal["s", "ms", "us"], list[int] | None] | None = None
+    TsUnit = Literal["s", "ms", "us"]
+    ts_best: tuple[_Candidate, float, int, TsUnit, _Candidate | None] | None = None
     for ts_cand in candidates:
         for ch_cand in [None, *channel_candidates]:
             channel_series = ch_cand.series if ch_cand is not None else None
@@ -431,33 +521,40 @@ def infer_layout(reader: EvidenceReader) -> InferredLayout | None:
                 continue
             weighted, support, unit = scored
             if ts_best is None:
-                ts_best = (ts_cand, weighted, support, unit, channel_series)
-            else:
-                better = weighted > ts_best[1] or (
-                    weighted == ts_best[1] and support > ts_best[2]
-                )
-                if better:
-                    ts_best = (ts_cand, weighted, support, unit, channel_series)
+                ts_best = (ts_cand, weighted, support, unit, ch_cand)
+                continue
+            if weighted > ts_best[1] or (weighted == ts_best[1] and support > ts_best[2]):
+                ts_best = (ts_cand, weighted, support, unit, ch_cand)
+            elif weighted == ts_best[1] and support == ts_best[2] and ch_cand is not None:
+                # FIX-9: tied on timestamp fit — prefer the smaller/denser
+                # channel candidate (`_candidate_quality_key`) rather than
+                # whichever combination the iteration order happened to
+                # reach first (two candidates — e.g. a genuine narrow field
+                # and an accidental wider one that includes always-zero
+                # leading bytes — can produce byte-identical series).
+                current = ts_best[4]
+                if current is None or _candidate_quality_key(ch_cand) < _candidate_quality_key(
+                    current
+                ):
+                    ts_best = (ts_cand, weighted, support, unit, ch_cand)
 
     channel_best: tuple[_Candidate, float, int] | None = None
     if ts_best is not None and ts_best[4] is not None:
-        chosen_channel_series = ts_best[4]
-        for c in channel_candidates:
-            if c.series == chosen_channel_series:
-                # confidence: how much this channel improves timestamp
-                # monotonicity vs. no split at all.
-                unsplit = _score_timestamp(ts_best[0].series, None)
-                unsplit_frac = unsplit[0] if unsplit is not None else 0.0
-                improvement = max(0.0, ts_best[1] - unsplit_frac)
-                confidence = min(0.99, 0.5 + improvement + 0.3)
-                channel_best = (c, confidence, len(c.series))
-                break
+        chosen = ts_best[4]
+        # confidence: how much this channel improves timestamp
+        # monotonicity vs. no split at all.
+        unsplit = _score_timestamp(ts_best[0].series, None)
+        unsplit_frac = unsplit[0] if unsplit is not None else 0.0
+        improvement = max(0.0, ts_best[1] - unsplit_frac)
+        confidence = min(0.99, 0.5 + improvement + 0.3)
+        channel_best = (chosen, confidence, len(chosen.series))
     if channel_best is None and channel_candidates:
         # No timestamp benefited from a channel split (e.g. a single-
         # channel device, or channels already interleave in strictly
-        # increasing write-time order) — fall back to the lowest-offset
-        # plausible channel-shaped candidate at a lower confidence.
-        c = min(channel_candidates, key=lambda c: (c.offset, c.width))
+        # increasing write-time order) — fall back to the smallest,
+        # densest plausible channel-shaped candidate (`_candidate_quality_key`,
+        # FIX-9) at a lower confidence, rather than just the lowest offset.
+        c = min(channel_candidates, key=_candidate_quality_key)
         channel_best = (c, 0.5, len(c.series))
 
     fields: list[InferredField] = []
@@ -504,13 +601,28 @@ def infer_layout(reader: EvidenceReader) -> InferredLayout | None:
                 )
             )
 
+    # FIX-9: tie-break by *smallest width last* (`-t[0].width`, so `max`
+    # prefers the narrower candidate). A wider byte range that happens to
+    # agree with a narrower true field's own value — e.g. because the
+    # extra bytes it swallows are always zero across every sample, or
+    # because it's simply misaligned by one and coincidentally reproduces
+    # the same numbers — scores identically to the true field but is not
+    # it; Occam's razor (prefer the smallest byte range that fully
+    # explains the data) breaks the tie towards the true, narrower field
+    # instead of silently keeping whichever candidate the offset-ascending
+    # iteration order happened to reach first.
     length_best = max(
         (
             (c, *_score_length(samples, header_len, c.series))
             for c in candidates
             if not _overlaps((c.offset, c.offset + c.width))
         ),
-        key=lambda t: (t[1], t[2]),
+        key=lambda t: (
+            t[1],
+            t[2],
+            -int(_has_constant_significant_byte(t[0], samples, header_len)),
+            -t[0].width,
+        ),
         default=None,
     )
     if length_best is not None and length_best[1] >= LENGTH_MATCH_MIN and length_best[2] > 0:
@@ -535,7 +647,12 @@ def infer_layout(reader: EvidenceReader) -> InferredLayout | None:
             for c in candidates
             if not _overlaps((c.offset, c.offset + c.width))
         ),
-        key=lambda t: (t[1], t[2]),
+        key=lambda t: (
+            t[1],
+            t[2],
+            -int(_has_constant_significant_byte(t[0], samples, header_len)),
+            -t[0].width,
+        ),
         default=None,
     )
     if sequence_best is not None and sequence_best[1] >= SEQUENCE_STEP_MIN and sequence_best[2] > 0:
@@ -559,7 +676,12 @@ def infer_layout(reader: EvidenceReader) -> InferredLayout | None:
             for c in candidates
             if not _overlaps((c.offset, c.offset + c.width))
         ),
-        key=lambda t: (t[1], t[2]),
+        key=lambda t: (
+            t[1],
+            t[2],
+            -int(_has_constant_significant_byte(t[0], samples, header_len)),
+            -t[0].width,
+        ),
         default=None,
     )
     if flags_best is not None and flags_best[1] > 0.9 and flags_best[2] > 0:
