@@ -31,7 +31,7 @@
   "deletions": [
     {
       "action_device": "2026-03-12T10:06:12Z",
-      "actor": "admin",
+      "actor": null,
       "channel": 1,
       "end_device": "2026-03-12T10:01:12Z",
       "method": "format",
@@ -39,7 +39,7 @@
     },
     {
       "action_device": "2026-03-12T10:06:12Z",
-      "actor": "admin",
+      "actor": null,
       "channel": 2,
       "end_device": "2026-03-12T10:01:12Z",
       "method": "format",
@@ -47,7 +47,7 @@
     },
     {
       "action_device": "2026-03-12T10:06:12Z",
-      "actor": "admin",
+      "actor": null,
       "channel": 3,
       "end_device": "2026-03-12T10:01:12Z",
       "method": "format",
@@ -55,7 +55,7 @@
     },
     {
       "action_device": "2026-03-12T10:06:12Z",
-      "actor": "admin",
+      "actor": null,
       "channel": 4,
       "end_device": "2026-03-12T10:01:12Z",
       "method": "format",

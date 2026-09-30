@@ -394,7 +394,7 @@ def build_image(name: str, images_dir: Path, truth_dir: Path, *, scenario: str) 
         deletions_source = gen1
         deletion_method = "format"
         action_true_s = format_true_s
-        actor: str | None = "admin"
+        actor: str | None = None  # no HWSIM log area, so no logged actor (see module docstring)
 
     elif scenario == "overwrite":
         rounds: list[list[_Recording]] = []
