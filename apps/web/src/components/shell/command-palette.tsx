@@ -4,7 +4,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useUiStore } from "@/store/ui";
 import { AssistantPanel } from "@/features/assistant/assistant-panel";
-import { LayoutGrid, HardDrive, PlaySquare, FileText, Sun, Moon, FolderKanban, Settings, Sparkles } from "lucide-react";
+import { LayoutGrid, HardDrive, PlaySquare, FileText, Sun, Moon, FolderKanban, Settings, Sparkles, Keyboard } from "lucide-react";
 
 /**
  * Global command palette (⌘K / Ctrl K): navigation + actions, matches every object the examiner
@@ -14,6 +14,7 @@ export function CommandPalette({ caseId }: { caseId?: string }) {
   const open = useUiStore((s) => s.commandPaletteOpen);
   const setOpen = useUiStore((s) => s.setCommandPaletteOpen);
   const toggleTheme = useUiStore((s) => s.toggleTheme);
+  const setShortcutSheetOpen = useUiStore((s) => s.setShortcutSheetOpen);
   const navigate = useNavigate();
   // "nav" = the command list; "assistant" = the "Ask about this case" panel swapped in place of it.
   const [view, setView] = useState<"nav" | "assistant">("nav");
@@ -94,6 +95,14 @@ export function CommandPalette({ caseId }: { caseId?: string }) {
                   <Sun className="dark:hidden" />
                   <Moon className="hidden dark:block" />
                   Toggle theme
+                </CommandItem>
+                <CommandItem
+                  onSelect={() => {
+                    setOpen(false);
+                    setShortcutSheetOpen(true);
+                  }}
+                >
+                  <Keyboard /> Keyboard shortcuts
                 </CommandItem>
               </CommandGroup>
             </CommandList>

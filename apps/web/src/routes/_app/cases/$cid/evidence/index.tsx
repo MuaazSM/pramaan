@@ -2,6 +2,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { HardDrive } from "lucide-react";
 import { PlaceholderScreen } from "@/components/shell/placeholder-screen";
+import { useCaseLabel } from "@/api/labels";
 
 export const Route = createFileRoute("/_app/cases/$cid/evidence/")({
   component: EvidenceListPlaceholder,
@@ -9,9 +10,10 @@ export const Route = createFileRoute("/_app/cases/$cid/evidence/")({
 
 function EvidenceListPlaceholder() {
     const { cid } = Route.useParams();
+    const caseLabel = useCaseLabel(cid);
     return (
       <PlaceholderScreen
-        segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Evidence" }]}
+        segments={[{ label: "Cases", to: "/cases" }, { label: caseLabel, to: `/cases/${cid}` }, { label: "Evidence" }]}
         caseId={cid}
         icon={HardDrive}
         title="Evidence"

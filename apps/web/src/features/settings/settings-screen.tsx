@@ -10,7 +10,9 @@ import { Activity, Bot, Check, KeyRound, Users, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import { formatTimecode } from "@/lib/format";
 import type { components } from "@/api/schema.gen";
@@ -43,7 +45,11 @@ export function SettingsScreen() {
 function useHealth() {
   return useQuery({
     queryKey: ["health"],
-    queryFn: async () => (await api.GET("/api/system/health")).data,
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/system/health");
+      if (error || !data) throw errorFromResponse(response, "system health could not be loaded");
+      return data;
+    },
   });
 }
 
@@ -83,7 +89,8 @@ const PANEL = "rounded-[var(--radius-panel)] border border-line bg-panel p-5";
 /* ------------------------------------- System health ----------------------------------------- */
 
 function HealthPanel() {
-  const { data: health, isLoading, isError } = useHealth();
+  const healthQuery = useHealth();
+  const { data: health, isLoading, isError } = healthQuery;
 
   const rows = health
     ? ([
@@ -108,9 +115,7 @@ function HealthPanel() {
       {isLoading ? (
         <Skeleton className="h-40 w-full" />
       ) : isError || !health ? (
-        <p role="alert" className="text-xs text-danger">
-          Could not load system health.
-        </p>
+        <QueryErrorState error={healthQuery.error} subject="system health" onRetry={() => void healthQuery.refetch()} className="py-6" />
       ) : (
         <dl className="rounded-[var(--radius-card)] border border-line bg-card px-4 text-xs">
           {rows.map(([label, value]) => (

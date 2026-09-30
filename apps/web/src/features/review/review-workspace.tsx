@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, PlaySquare } from "lucide-react";
+import { PlaySquare } from "lucide-react";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { ReviewToolbar } from "./components/review-toolbar";
 import { InspectorSlot } from "./components/inspector-slot";
 import { SplitHandle } from "./components/split-handle";
@@ -31,7 +33,8 @@ export function ReviewWorkspace({ caseId }: { caseId: string }) {
   const timelineQuery = useQuery({
     queryKey: ["review-timeline", caseId],
     queryFn: async () => {
-      const { data } = await api.GET("/api/cases/{cid}/timeline", { params: { path: { cid: caseId } } });
+      const { data, error, response } = await api.GET("/api/cases/{cid}/timeline", { params: { path: { cid: caseId } } });
+      if (error || !data) throw errorFromResponse(response, "the timeline could not be loaded");
       return data;
     },
   });
@@ -39,7 +42,8 @@ export function ReviewWorkspace({ caseId }: { caseId: string }) {
   const framesQuery = useQuery({
     queryKey: ["review-frames", caseId],
     queryFn: async () => {
-      const { data } = await api.GET("/api/cases/{cid}/frames", { params: { path: { cid: caseId } } });
+      const { data, error, response } = await api.GET("/api/cases/{cid}/frames", { params: { path: { cid: caseId } } });
+      if (error) throw errorFromResponse(response, "frames could not be loaded");
       return data ?? [];
     },
   });
@@ -77,14 +81,11 @@ export function ReviewWorkspace({ caseId }: { caseId: string }) {
     );
   }
 
-  if (timelineQuery.isError) {
+  if (timelineQuery.isError || framesQuery.isError) {
+    const failed = timelineQuery.isError ? timelineQuery : framesQuery;
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-        <AlertTriangle size={22} strokeWidth={1.5} className="text-danger" />
-        <div>
-          <p className="text-[13px] font-medium text-text">Couldn't load the timeline</p>
-          <p className="mt-1 text-[12px] text-text-2">Check the connection and try again.</p>
-        </div>
+      <div className="flex h-full items-center justify-center">
+        <QueryErrorState error={failed.error} subject="the review timeline" onRetry={() => void failed.refetch()} />
       </div>
     );
   }

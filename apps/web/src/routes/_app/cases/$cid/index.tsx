@@ -8,6 +8,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, PlaySquare, HardDrive, ShieldAlert, Clock3, Radio } from "lucide-react";
 import { ScreenShell } from "@/components/shell/screen-shell";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import { IntegrityChip } from "@/components/signature/integrity-chip";
 import { TierBadge, type Tier } from "@/components/signature/tier-badge";
 import { formatBytes, formatTimecode } from "@/lib/format";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 
 export const Route = createFileRoute("/_app/cases/$cid/")({
   component: CaseOverviewScreen,
@@ -25,23 +27,43 @@ function CaseOverviewScreen() {
 
   const caseQuery = useQuery({
     queryKey: ["case", cid],
-    queryFn: async () => (await api.GET("/api/cases/{cid}", { params: { path: { cid } } })).data,
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/cases/{cid}", { params: { path: { cid } } });
+      if (error || !data) throw errorFromResponse(response, "this case could not be loaded");
+      return data;
+    },
   });
   const evidenceQuery = useQuery({
     queryKey: ["evidence", cid],
-    queryFn: async () => (await api.GET("/api/cases/{cid}/evidence", { params: { path: { cid } } })).data ?? [],
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/cases/{cid}/evidence", { params: { path: { cid } } });
+      if (error) throw errorFromResponse(response, "evidence could not be loaded");
+      return data ?? [];
+    },
   });
   const deletionsQuery = useQuery({
     queryKey: ["deletions", cid],
-    queryFn: async () => (await api.GET("/api/cases/{cid}/deletions", { params: { path: { cid } } })).data ?? [],
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/cases/{cid}/deletions", { params: { path: { cid } } });
+      if (error) throw errorFromResponse(response, "deletions could not be loaded");
+      return data ?? [];
+    },
   });
   const clocksQuery = useQuery({
     queryKey: ["clock-models", cid],
-    queryFn: async () => (await api.GET("/api/cases/{cid}/clock-models", { params: { path: { cid } } })).data ?? [],
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/cases/{cid}/clock-models", { params: { path: { cid } } });
+      if (error) throw errorFromResponse(response, "clock models could not be loaded");
+      return data ?? [];
+    },
   });
   const recordingsQuery = useQuery({
     queryKey: ["recordings", cid],
-    queryFn: async () => (await api.GET("/api/cases/{cid}/recordings", { params: { path: { cid } } })).data ?? [],
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/cases/{cid}/recordings", { params: { path: { cid } } });
+      if (error) throw errorFromResponse(response, "recordings could not be loaded");
+      return data ?? [];
+    },
   });
   const auditQuery = useQuery({
     queryKey: ["audit", cid, "recent"],
@@ -57,6 +79,19 @@ function CaseOverviewScreen() {
   const recoveredSeconds = deletions.reduce((sum, d) => sum + (d.end_ts_us - d.start_ts_us) / 1_000_000, 0);
   const avgConfidence = clocks.length ? clocks.reduce((s, c2) => s + c2.confidence, 0) / clocks.length : null;
   const allVerified = evidence.length > 0 && evidence.every((e) => e.verified);
+
+  // A failed *case* fetch (401/403/404/network/500) means nothing below it — evidence, findings,
+  // recovered-footage totals — can be trusted either, so the whole screen shows one classified
+  // error instead of a permanently-stuck skeleton (the old `caseQuery.isLoading || !c` condition
+  // never resolved on error: isLoading goes false, but `c` stays undefined forever) or, worse,
+  // silently rendering the other panels' empty states as if the case genuinely had zero evidence.
+  if (caseQuery.isError) {
+    return (
+      <ScreenShell segments={[{ label: "Cases", to: "/cases" }, { label: cid }]} caseId={cid}>
+        <QueryErrorState error={caseQuery.error} subject="this case" onRetry={() => void caseQuery.refetch()} />
+      </ScreenShell>
+    );
+  }
 
   return (
     <ScreenShell
@@ -110,10 +145,12 @@ function CaseOverviewScreen() {
           </div>
           {evidenceQuery.isLoading ? (
             <Skeleton className="h-8 w-full" />
+          ) : evidenceQuery.isError ? (
+            <QueryErrorState error={evidenceQuery.error} subject="evidence" onRetry={() => void evidenceQuery.refetch()} className="py-4" />
           ) : evidence.length === 0 ? (
             <EmptyEvidence cid={cid} />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col items-start gap-2">
               {evidence.map((e) => (
                 <IntegrityChip key={e.id} state={e.verified ? "verified" : "pending"} hash={e.sha256} />
               ))}
@@ -123,13 +160,19 @@ function CaseOverviewScreen() {
 
         {/* Key numbers */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard icon={Radio} label="Channels" value={channels || "—"} />
-          <StatCard icon={ShieldAlert} label="Deletion events" value={deletions.length} />
-          <StatCard icon={Clock3} label="Recovered footage" value={`${Math.round(recoveredSeconds / 60)} min`} />
+          {/* "—" (not "0") whenever the backing query errored — a real zero and "the request
+              failed so we don't actually know" must never look the same in a forensic summary. */}
+          <StatCard icon={Radio} label="Channels" value={recordingsQuery.isError ? "—" : channels || "—"} />
+          <StatCard icon={ShieldAlert} label="Deletion events" value={deletionsQuery.isError ? "—" : deletions.length} />
+          <StatCard
+            icon={Clock3}
+            label="Recovered footage"
+            value={deletionsQuery.isError ? "—" : `${Math.round(recoveredSeconds / 60)} min`}
+          />
           <StatCard
             icon={HardDrive}
             label="Clock confidence"
-            value={avgConfidence != null ? `${Math.round(avgConfidence * 100)}%` : "—"}
+            value={clocksQuery.isError ? "—" : avgConfidence != null ? `${Math.round(avgConfidence * 100)}%` : "—"}
           />
         </div>
 

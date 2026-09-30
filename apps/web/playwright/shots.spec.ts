@@ -70,20 +70,25 @@ async function login(page: Page) {
  * *document* never scrolls, only that inner pane does, and `page.screenshot({ fullPage })` alone
  * only captures one viewport's worth of it, silently truncating anything below the fold (found
  * while reviewing F2's evidence-detail screen, whose device-log table sits below the pipeline
- * panel; docs/progress/F2.md "Decisions"). Force the whole clipping chain to lay out at its full
- * content height for the screenshot only — every route re-navigates before the next capture, so
- * this never leaks into the real app.
+ * panel; docs/progress/F2.md "Decisions").
+ *
+ * F5 fix: this used to force `overflow: visible; height: auto` on the document/root/main chain
+ * for the screenshot. That broke the sidebar and custody-seal footer, which stretch to the app
+ * shell's height via `h-full`/flex `align-items: stretch` against the shell's `h-screen` —
+ * percentage/stretch sizing against a container whose height was hacked to `auto` resolves to
+ * the *sidebar's own* short content height, so it (and the footer) stopped mid-page in the
+ * full-page capture even though the real, unmodified app always fills the viewport (`h-screen`
+ * is exact by construction; only `main` ever scrolls internally). Rather than fight flexbox
+ * stretch semantics with more CSS overrides, grow the real browser viewport to `main`'s natural
+ * content height before shooting, so the shell's `h-screen`/`h-full` chain is never touched —
+ * the sidebar and footer lay out exactly as they do in the running app, just at a taller
+ * viewport, and `fullPage` screenshot then needs no scrolling to capture everything.
  */
-async function expandScrollContainers(page: Page) {
-  await page.evaluate(() => {
-    const root = document.getElementById("root");
-    const appLayout = root?.firstElementChild;
+async function scrollContainerOverflow(page: Page): Promise<number> {
+  return page.evaluate(() => {
     const main = document.querySelector("main");
-    for (const el of [document.documentElement, document.body, root, appLayout, main]) {
-      if (!(el instanceof HTMLElement)) continue;
-      el.style.overflow = "visible";
-      el.style.height = "auto";
-    }
+    if (!(main instanceof HTMLElement)) return 0;
+    return Math.max(0, main.scrollHeight - main.clientHeight);
   });
 }
 
@@ -101,8 +106,10 @@ async function setTheme(page: Page, theme: "dark" | "light") {
 for (const size of SIZES) {
   for (const theme of ["dark", "light"] as const) {
     test(`${size.name} ${theme}`, async ({ page }) => {
-      await page.setViewportSize({ width: size.width, height: size.height });
       for (const route of ROUTES) {
+        // Reset to the base viewport before every route: a previous route may have grown it to
+        // fit tall content (below), and `ready()`/login must run at the real, un-grown size.
+        await page.setViewportSize({ width: size.width, height: size.height });
         if (route.ready) await route.ready(page);
         await page.goto(route.path);
         await setTheme(page, theme);
@@ -112,7 +119,14 @@ for (const size of SIZES) {
         // (features/prove/components/sha-recompute.tsx's 480ms perceivable-computing delay) to
         // settle to its verified/mismatch state before the screenshot, not the transient spinner.
         await page.waitForTimeout(700);
-        if (route.scrollExpand !== false) await expandScrollContainers(page);
+        if (route.scrollExpand !== false) {
+          const extra = await scrollContainerOverflow(page);
+          if (extra > 0) {
+            await page.setViewportSize({ width: size.width, height: size.height + extra });
+            // The resize can trigger a layout pass (virtualized tables, ResizeObservers); let it settle.
+            await page.waitForTimeout(120);
+          }
+        }
         await page.screenshot({
           path: path.join(OUT_DIR, `${route.name}-${size.name}-${theme}.png`),
           fullPage: true,

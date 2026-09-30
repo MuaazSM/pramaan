@@ -187,9 +187,34 @@ export const JOBS_BY_CASE: Record<string, Job[]> = {
   ],
 };
 
+/**
+ * Deterministic PRNG (mulberry32 — same algorithm as review-fixtures.ts's, no Math.random(),
+ * per CLAUDE.md rule 5) used only to make mock hash/signature *bytes* look like real digests
+ * (full-width, non-sequential) instead of a shared constant string with one digit swapped.
+ */
+function mulberry32(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** `seed` distinct 64-char lowercase hex string ("looks like a real sha256"), deterministic. */
+function fakeHex64(seed: number): string {
+  const rng = mulberry32(seed);
+  let out = "";
+  for (let i = 0; i < 64; i++) out += Math.floor(rng() * 16).toString(16);
+  return out;
+}
+
 function auditEntry(
   seq: number,
   prev: string | null,
+  tsUtc: string,
   action: string,
   actor: string,
   role: string,
@@ -199,43 +224,156 @@ function auditEntry(
   return {
     seq,
     prev_hash: prev,
-    entry_hash: `${seq.toString(16).padStart(4, "0")}f09c2b8d3e6710f4c9a2b5e8d1f0c3a6b9e2d5f8c1a4b7e0d3f6c9a2b5e1d`,
-    ts_utc: `2026-03-1${2 + Math.floor(seq / 40)}T${String(9 + (seq % 12)).padStart(2, "0")}:${String(
-      (seq * 7) % 60,
-    ).padStart(2, "0")}:00Z`,
+    // Each entry's hash is a function of its own seq (and, honestly, nothing else — this is a
+    // display fixture, not a real hash chain) so no two entries share bytes beyond coincidence,
+    // instead of the old "same 60 trailing hex chars for every row" pattern that read as fake.
+    entry_hash: fakeHex64(seq * 2 + 1),
+    ts_utc: tsUtc,
     actor,
     role,
     action,
     object_type: objectType,
     object_id: objectId,
-    payload_sha256: seq % 3 === 0 ? "9b2e5c8f1a4d7e0b3c6f9a2d5e8b1c47a3d6f9c2b5e8f1a4d7c0b3e6f9a2d5b8" : null,
+    payload_sha256: seq % 3 === 0 ? fakeHex64(seq * 2 + 5000) : null,
     details: {},
-    signature: `sig_${seq}_demo`,
+    signature: fakeHex64(seq * 2 + 9000).slice(0, 88),
   };
 }
 
-export const AUDIT_BY_CASE: Record<string, AuditEntry[]> = {
-  [DEMO_CASE.id]: (() => {
-    const actions = [
-      ["case.created", "examiner", "R. Deshmukh".split(" ")[0], "case", DEMO_CASE.id],
-      ["evidence.registered", "examiner", "examiner", "evidence", "ev_hiksim01"],
+/**
+ * Realistic, deterministic audit narrative for the demo case (F5 fix — the previous generator
+ * cycled a length-8 action list forever, so `case.created` reappeared at #1/#9/#17/... and every
+ * hash shared the same 60 trailing hex chars; both read as obviously fake in the custody screen's
+ * audit timeline). This builds a one-time case narrative (case creation, both evidence items'
+ * intake/scan/finding lifecycle, a report and an export) followed by a long tail of routine
+ * examiner/system activity — logins, re-verifications, report/export views, periodic re-scans —
+ * whose object ids increment per action *type* (not per row), so nothing repeats on a short,
+ * visible period the way the old fixture did. Still fully deterministic: no Date.now()/Math.random.
+ */
+function buildAuditLog(caseId: string, total: number): AuditEntry[] {
+  type Step = readonly [action: string, role: string, actor: string, objType: string, objId: string];
+
+  const narrative: Step[] = [
+    ["case.created", "examiner", "examiner", "case", caseId],
+    ["evidence.registered", "examiner", "examiner", "evidence", "ev_hiksim01"],
+    ["evidence.verified", "examiner", "examiner", "evidence", "ev_hiksim01"],
+    ["job.scan.started", "examiner", "examiner", "job", "job_scan01"],
+    ["job.log", "system", "system", "job", "job_scan01"],
+    ["job.scan.completed", "examiner", "examiner", "job", "job_scan01"],
+    ["deletion.finding.recorded", "system", "system", "finding", "find_format01"],
+    ["evidence.registered", "examiner", "examiner", "evidence", "ev_gensim02"],
+    ["job.scan.started", "examiner", "examiner", "job", "job_scan02"],
+    ["job.scan.completed", "examiner", "examiner", "job", "job_scan02"],
+    ["inferred_layout.proposed", "system", "system", "layout", "ilay_gensim02_01"],
+    ["report.generated", "examiner", "examiner", "report", "report_001"],
+    ["export.created", "examiner", "examiner", "export", "export_001"],
+    ["custody.anchor.created", "examiner", "examiner", "anchor", "anchor_local_001"],
+  ];
+
+  const pad3 = (n: number) => String(n).padStart(3, "0");
+
+  // Routine tail: small, internally-consistent activity "bursts" (a reviewer session, a fresh
+  // export + its own verification, a re-scan's start/log/complete, ...) rather than one flat
+  // pool of independent rows — so a paired action (login/logout, export.created/verified,
+  // job.scan.started/completed) always references the *same* freshly-minted object id, and a
+  // fixed-identity object (the case, the two evidence images, the one finding) is referenced by
+  // its real id forever rather than being invented a new one each visit. Object ids that
+  // represent a genuinely new thing (export, report, re-scan job, session) increment a counter
+  // seeded past what the one-time narrative above already used.
+  let sessN = 0;
+  let exportN = 1;
+  let reportN = 1;
+  let rescanN = 0;
+  const templates: (() => Step[])[] = [
+    // A: reviewer opens the case, checks findings and the report, signs off.
+    () => {
+      const sess = `sess_${pad3(++sessN)}`;
+      return [
+        ["auth.login", "reviewer", "S. Kulkarni", "session", sess],
+        ["timeline.viewed", "reviewer", "S. Kulkarni", "case", caseId],
+        ["findings.viewed", "reviewer", "S. Kulkarni", "finding", "find_format01"],
+        ["report.viewed", "reviewer", "S. Kulkarni", "report", `report_${pad3(reportN)}`],
+        ["auth.logout", "reviewer", "S. Kulkarni", "session", sess],
+      ];
+    },
+    // B: examiner re-verifies chain integrity and the Tier A image's hash.
+    () => [
+      ["custody.chain.verified", "examiner", "examiner", "case", caseId],
       ["evidence.verified", "examiner", "examiner", "evidence", "ev_hiksim01"],
-      ["job.scan.started", "examiner", "examiner", "job", "job_scan01"],
-      ["job.scan.completed", "examiner", "examiner", "job", "job_scan01"],
-      ["deletion.finding.recorded", "system", "system", "finding", "find_format01"],
-      ["evidence.registered", "examiner", "examiner", "evidence", "ev_gensim02"],
-      ["job.scan.started", "examiner", "examiner", "job", "job_scan02"],
-    ] as const;
-    const out: AuditEntry[] = [];
-    let prev: string | null = null;
-    for (let i = 0; i < 128; i++) {
-      const [action, role, actor, objType, objId] = actions[i % actions.length];
-      const e = auditEntry(i + 1, prev, action, actor, role, objType, objId);
-      prev = e.entry_hash;
-      out.push(e);
+    ],
+    // C: examiner creates a fresh signed export and immediately verifies it.
+    () => {
+      const id = `export_${pad3(++exportN)}`;
+      return [
+        ["export.created", "examiner", "examiner", "export", id],
+        ["export.verified", "examiner", "examiner", "export", id],
+      ];
+    },
+    // D: periodic re-scan of the Tier A image (e.g. after a scanner update).
+    () => {
+      const id = `job_rescan_${pad3(++rescanN)}`;
+      return [
+        ["job.scan.started", "examiner", "examiner", "job", id],
+        ["job.log", "system", "system", "job", id],
+        ["job.scan.completed", "examiner", "examiner", "job", id],
+      ];
+    },
+    // E: examiner adjusts the LLM budget cap in Settings.
+    () => [["settings.updated", "examiner", "examiner", "settings", "llm_budget"]],
+    // F: examiner generates a follow-up report revision; the reviewer reads that one.
+    () => {
+      const id = `report_${pad3(++reportN)}`;
+      return [
+        ["report.generated", "examiner", "examiner", "report", id],
+        ["report.viewed", "reviewer", "S. Kulkarni", "report", id],
+      ];
+    },
+    // G: examiner logs a short session re-verifying the second (Tier B) image.
+    () => {
+      const sess = `sess_${pad3(++sessN)}`;
+      return [
+        ["auth.login", "examiner", "examiner", "session", sess],
+        ["evidence.verified", "examiner", "examiner", "evidence", "ev_gensim02"],
+        ["auth.logout", "examiner", "examiner", "session", sess],
+      ];
+    },
+  ];
+
+  const steps: Step[] = [...narrative];
+  let ti = 0;
+  outer: while (steps.length < total) {
+    // Stride 3 over 7 templates (coprime) so the burst *order* doesn't repeat on a short period
+    // either, independent of each burst's own incrementing object ids.
+    const tpl = templates[ti % templates.length]();
+    ti += 3;
+    for (const s of tpl) {
+      steps.push(s);
+      if (steps.length >= total) break outer;
     }
-    return out;
-  })(),
+  }
+
+  // Timestamps: monotonically increasing, in bursts (pipeline stages seconds apart) separated
+  // by longer human-activity gaps (minutes to hours across a multi-day examination), driven by
+  // the same deterministic PRNG rather than a fixed modulo that visibly wraps every 60 entries.
+  const tsRng = mulberry32(42);
+  let cursorUs = Date.parse("2026-03-12T09:14:00.000Z") * 1000;
+  const out: AuditEntry[] = [];
+  let prev: string | null = null;
+  for (let i = 0; i < steps.length; i++) {
+    const [action, role, actor, objType, objId] = steps[i];
+    const isPipelineStep = action.startsWith("job.") || action === "deletion.finding.recorded";
+    const gapS = isPipelineStep ? 2 + Math.floor(tsRng() * 8) : 90 + Math.floor(tsRng() * 5400);
+    cursorUs += gapS * 1_000_000;
+    const tsUtc = new Date(Math.round(cursorUs / 1000)).toISOString().replace(/\.\d+Z$/, "Z");
+    const e = auditEntry(i + 1, prev, tsUtc, action, actor, role, objType, objId);
+    prev = e.entry_hash;
+    out.push(e);
+  }
+  return out;
+}
+
+export const AUDIT_BY_CASE: Record<string, AuditEntry[]> = {
+  [DEMO_CASE.id]: buildAuditLog(DEMO_CASE.id, 128),
 };
 
 export const HEALTH: HealthStatus = {

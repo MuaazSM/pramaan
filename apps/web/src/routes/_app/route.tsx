@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, redirect, useParams } from "@tanstack/react-ro
 import { Sidebar } from "@/components/shell/sidebar";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { JobDrawer } from "@/components/shell/job-drawer";
+import { ShortcutSheet } from "@/components/shell/shortcut-sheet";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/api/client";
 
@@ -33,6 +34,7 @@ function AppLayout() {
       </div>
       <CommandPalette caseId={params.cid} />
       <JobDrawer caseId={params.cid} />
+      <ShortcutSheet />
     </div>
   );
 }

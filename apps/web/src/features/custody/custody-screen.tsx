@@ -12,7 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { IntegrityChip, type IntegrityState } from "@/components/signature/integrity-chip";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import { formatTimecode, shortHash } from "@/lib/format";
 import type { components } from "@/api/schema.gen";
@@ -64,7 +66,11 @@ function useVerify(caseId: string) {
   // Same query key as ScreenShell's custody-seal query, so re-verifying here also refreshes the footer strip.
   return useQuery({
     queryKey: ["audit-verify", caseId],
-    queryFn: async () => (await api.GET("/api/cases/{cid}/audit/verify", { params: { path: { cid: caseId } } })).data ?? null,
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/cases/{cid}/audit/verify", { params: { path: { cid: caseId } } });
+      if (error) throw errorFromResponse(response, "the chain verification result could not be loaded");
+      return data ?? null;
+    },
   });
 }
 
@@ -113,9 +119,7 @@ function VerifyPanel({ caseId }: { caseId: string }) {
         {verify.isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : verify.isError || !result ? (
-          <p role="alert" className="rounded-[var(--radius-card)] border border-line-strong bg-control p-3 text-xs text-danger">
-            Could not fetch the verification result. Use “Re-verify chain” to retry.
-          </p>
+          <QueryErrorState error={verify.error} subject="the chain verification result" className="py-4" />
         ) : (
           <div data-testid="verify-result" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Result">
@@ -162,7 +166,11 @@ function AnchorsPanel({ caseId }: { caseId: string }) {
 
   const anchors = useQuery({
     queryKey: ["anchors", caseId],
-    queryFn: async () => (await api.GET("/api/cases/{cid}/anchors", { params: { path: { cid: caseId } } })).data ?? [],
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/cases/{cid}/anchors", { params: { path: { cid: caseId } } });
+      if (error) throw errorFromResponse(response, "anchors could not be loaded");
+      return data ?? [];
+    },
   });
 
   const create = useMutation({
@@ -234,12 +242,7 @@ function AnchorsPanel({ caseId }: { caseId: string }) {
       {anchors.isLoading ? (
         <Skeleton className="h-20 w-full" />
       ) : anchors.isError ? (
-        <p role="alert" className="text-xs text-danger">
-          Could not load anchors.{" "}
-          <button type="button" className="focus-ring underline" onClick={() => void anchors.refetch()}>
-            Retry
-          </button>
-        </p>
+        <QueryErrorState error={anchors.error} subject="anchors" onRetry={() => void anchors.refetch()} className="py-4" />
       ) : sorted.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[var(--radius-card)] border border-dashed border-line-strong py-8 text-center">
           <AnchorIcon size={22} strokeWidth={1.5} className="text-text-3" />

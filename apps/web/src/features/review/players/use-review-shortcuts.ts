@@ -1,11 +1,6 @@
 import { useEffect } from "react";
 import { usePlayheadStore } from "../store/playhead";
-
-function isTypingTarget(el: EventTarget | null): boolean {
-  if (!(el instanceof HTMLElement)) return false;
-  const tag = el.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
-}
+import { isTypingTarget } from "@/lib/utils";
 
 /**
  * Global review-workspace shortcuts (docs/04-FRONTEND.md §5.1): J/K/L shuttle, arrow-key frame

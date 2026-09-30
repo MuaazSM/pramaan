@@ -33,6 +33,11 @@ function makeFakeCtx(): DrawCtx {
     rect() {},
     clip() {},
     fillText() {},
+    // Rough monospace-at-11px estimate (~6.6px/char) — good enough to exercise the greedy
+    // label-placement branch in drawRuler without needing a real canvas (see file header).
+    measureText(text: string) {
+      return { width: text.length * 6.6 };
+    },
     setLineDash() {},
     fillStyle: "",
     strokeStyle: "",

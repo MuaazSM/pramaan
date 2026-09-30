@@ -40,7 +40,7 @@ function LoginScreen() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg px-4">
+    <main className="flex min-h-screen items-center justify-center bg-bg px-4">
       <div className="w-full max-w-[360px]">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <svg width="36" height="36" viewBox="0 0 32 32" fill="none" aria-hidden>
@@ -97,16 +97,19 @@ function LoginScreen() {
             Sign in
           </Button>
 
-          <p className="text-center text-[11px] text-text-3">
+          {/* text-2, not text-3: text-3 (--ink-400) measures ~3.1-3.4:1 against these dark
+              backgrounds — below WCAG AA's 4.5:1 for normal-size text (Lighthouse color-contrast,
+              F5 fix). text-2 (--ink-300) measures ~6:1. */}
+          <p className="text-center text-[11px] text-text-2">
             Seeded accounts: examiner/demo, reviewer/demo, admin/demo
           </p>
         </form>
 
-        <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-text-3">
+        <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-text-2">
           <WifiOff size={12} strokeWidth={1.75} />
           Works offline once installed — evidence never leaves this workstation.
         </div>
       </div>
-    </div>
+    </main>
   );
 }

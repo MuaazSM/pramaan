@@ -8,6 +8,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ScreenShell } from "@/components/shell/screen-shell";
 import { ReviewWorkspace } from "@/features/review/review-workspace";
+import { useCaseLabel } from "@/api/labels";
 
 export const Route = createFileRoute("/_app/cases/$cid/review")({
   component: ReviewRoute,
@@ -15,9 +16,10 @@ export const Route = createFileRoute("/_app/cases/$cid/review")({
 
 function ReviewRoute() {
   const { cid } = Route.useParams();
+  const caseLabel = useCaseLabel(cid);
   return (
     <ScreenShell
-      segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Review" }]}
+      segments={[{ label: "Cases", to: "/cases" }, { label: caseLabel, to: `/cases/${cid}` }, { label: "Review" }]}
       caseId={cid}
       showCustodySeal={true}
     >

@@ -5,6 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ScreenShell } from "@/components/shell/screen-shell";
 import { FindingsScreen } from "@/features/findings/findings-screen";
+import { useCaseLabel } from "@/api/labels";
 
 export const Route = createFileRoute("/_app/cases/$cid/findings")({
   component: FindingsRoute,
@@ -12,8 +13,9 @@ export const Route = createFileRoute("/_app/cases/$cid/findings")({
 
 function FindingsRoute() {
   const { cid } = Route.useParams();
+  const caseLabel = useCaseLabel(cid);
   return (
-    <ScreenShell segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Findings" }]} caseId={cid} showCustodySeal>
+    <ScreenShell segments={[{ label: "Cases", to: "/cases" }, { label: caseLabel, to: `/cases/${cid}` }, { label: "Findings" }]} caseId={cid} showCustodySeal>
       <FindingsScreen cid={cid} />
     </ScreenShell>
   );

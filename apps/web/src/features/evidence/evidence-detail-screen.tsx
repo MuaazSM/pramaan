@@ -5,11 +5,13 @@
  * (deployment-log-style pipeline progress, calm monochrome stat rows).
  */
 import { useQuery } from "@tanstack/react-query";
-import { HardDrive, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { IntegrityChip } from "@/components/signature/integrity-chip";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 import { formatBytes, formatTimecode } from "@/lib/format";
 import { IdentificationPanel } from "./identification-panel";
 import { PipelinePanel } from "./pipeline-panel";
@@ -20,8 +22,8 @@ export function EvidenceDetailScreen({ cid, eid }: { cid: string; eid: string })
   const evidenceQuery = useQuery({
     queryKey: ["evidence-detail", eid],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/evidence/{eid}", { params: { path: { eid } } });
-      if (error || !data) throw new Error("evidence not found");
+      const { data, error, response } = await api.GET("/api/evidence/{eid}", { params: { path: { eid } } });
+      if (error || !data) throw errorFromResponse(response, "this evidence image could not be loaded");
       return data;
     },
   });
@@ -37,10 +39,12 @@ export function EvidenceDetailScreen({ cid, eid }: { cid: string; eid: string })
 
   if (evidenceQuery.isError || !evidenceQuery.data) {
     return (
-      <div className="flex flex-col items-center gap-3 py-20 text-center">
-        <HardDrive size={24} strokeWidth={1.5} className="text-text-3" />
-        <p className="text-[13px] text-text-2">This evidence image could not be found.</p>
-      </div>
+      <QueryErrorState
+        error={evidenceQuery.error}
+        subject="this evidence image"
+        onRetry={() => void evidenceQuery.refetch()}
+        className="py-20"
+      />
     );
   }
 

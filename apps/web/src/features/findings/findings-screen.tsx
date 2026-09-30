@@ -11,7 +11,9 @@ import { ShieldAlert, HardDrive, Video, PlaySquare, Binary, Hash, ChevronRight }
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 import { formatTimecodeUs, formatBytes } from "@/lib/format";
 import type { components } from "@/api/schema.gen";
 
@@ -27,7 +29,11 @@ const METHOD_LABEL: Record<DeletionFinding["method"], string> = {
 export function FindingsScreen({ cid }: { cid: string }) {
   const query = useQuery({
     queryKey: ["deletions", cid],
-    queryFn: async () => (await api.GET("/api/cases/{cid}/deletions", { params: { path: { cid } } })).data ?? [],
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/cases/{cid}/deletions", { params: { path: { cid } } });
+      if (error) throw errorFromResponse(response, "findings could not be loaded");
+      return data ?? [];
+    },
   });
 
   const findings = [...(query.data ?? [])].sort((a, b) => b.confidence - a.confidence);
@@ -43,6 +49,8 @@ export function FindingsScreen({ cid }: { cid: string }) {
         <div className="flex flex-col gap-3">
           <Skeleton className="h-48 w-full" />
         </div>
+      ) : query.isError ? (
+        <QueryErrorState error={query.error} subject="findings" onRetry={() => void query.refetch()} />
       ) : findings.length === 0 ? (
         <EmptyFindings />
       ) : (

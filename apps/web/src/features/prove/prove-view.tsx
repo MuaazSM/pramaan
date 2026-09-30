@@ -12,10 +12,11 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Binary, ChevronLeft, ChevronRight, Copy } from "lucide-react";
+import { Binary, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
 import { FrameInspector } from "@/features/inspector/frame-inspector";
 import { FieldDecoder } from "./components/field-decoder";
@@ -82,12 +83,12 @@ export function ProveView({ caseId, frameId }: { caseId: string; frameId: string
 
   if (hexQuery.isError || !hexQuery.data || !bytes) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
-        <AlertTriangle size={22} strokeWidth={1.5} className="text-danger" />
-        <div>
-          <p className="text-[13px] font-medium text-text">Couldn't load this frame's bytes</p>
-          <p className="mt-1 text-[12px] text-text-2">{`frame_id ${frameId} — it may not exist in this case.`}</p>
-        </div>
+      <div className="flex h-full items-center justify-center p-10">
+        <QueryErrorState
+          error={hexQuery.error}
+          subject="this frame's bytes"
+          onRetry={hexQuery.isError ? () => void hexQuery.refetch() : undefined}
+        />
       </div>
     );
   }

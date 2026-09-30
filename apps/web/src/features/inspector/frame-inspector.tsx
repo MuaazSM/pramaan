@@ -11,7 +11,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, Binary, FileStack, FileText, PackageOpen, ScanEye } from "lucide-react";
+import { Binary, FileStack, FileText, PackageOpen, ScanEye, SearchX } from "lucide-react";
 import { api } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ClockStack } from "@/components/signature/clock-stack";
 import { IntegrityChip } from "@/components/signature/integrity-chip";
 import { LineageBreadcrumb, type LineageSegment } from "@/components/signature/lineage-breadcrumb";
+import { QueryErrorState } from "@/components/shell/query-error-state";
+import { errorFromResponse } from "@/lib/api-error";
 import { formatBytes, formatTimecode, shortHash } from "@/lib/format";
 import { resolveClockStack } from "./lib/clock-readings";
 import { useFrameHex } from "@/features/prove/lib/use-frame-hex";
@@ -31,8 +33,11 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
     queryFn: async () => {
       const { data, error, response } = await api.GET("/api/frames/{fid}", { params: { path: { fid: frameId } } });
       if (error) {
+        // A confirmed 404 is a distinct, well-understood state ("this frame id doesn't exist") —
+        // not thrown, so it renders its own precise copy below instead of QueryErrorState's more
+        // hedged "couldn't load" message, which is reserved for genuine failures (401/403/5xx/network).
         if (response.status === 404) return null;
-        throw new Error("failed to load frame");
+        throw errorFromResponse(response, "this frame could not be loaded");
       }
       return data ?? null;
     },
@@ -60,13 +65,21 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
 
   if (frameQuery.isLoading) return <InspectorSkeleton />;
 
-  if (frameQuery.isError || !frame) {
+  if (frameQuery.isError) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <QueryErrorState error={frameQuery.error} subject="this frame" onRetry={() => void frameQuery.refetch()} />
+      </div>
+    );
+  }
+
+  if (!frame) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-        <AlertTriangle size={20} strokeWidth={1.5} className="text-danger" />
+        <SearchX size={20} strokeWidth={1.5} className="text-text-3" />
         <div>
-          <p className="text-[13px] font-medium text-text">Couldn't load this frame</p>
-          <p className="mt-1 text-[12px] text-text-2">frame_id {frameId} — it may not exist in this case.</p>
+          <p className="text-[13px] font-medium text-text">Frame not found</p>
+          <p className="mt-1 text-[12px] text-text-2">frame_id {frameId} does not exist in this case.</p>
         </div>
       </div>
     );

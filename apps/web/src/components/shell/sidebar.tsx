@@ -102,7 +102,7 @@ export function Sidebar({ caseId }: { caseId?: string }) {
             })}
           </ul>
         ) : (
-          !collapsed && <p className="px-2.5 py-1.5 text-xs text-text-3">Open a case to see its navigation.</p>
+          !collapsed && <p className="px-2.5 py-1.5 text-xs text-text-2">Open a case to see its navigation.</p>
         )}
       </nav>
 
@@ -114,7 +114,7 @@ export function Sidebar({ caseId }: { caseId?: string }) {
           <Settings size={16} strokeWidth={1.5} />
           {!collapsed && <span>Settings</span>}
         </Link>
-        <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-text-3">
+        <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-text-2">
           <CircleDot size={12} strokeWidth={2} className="text-ok" />
           {!collapsed && <span>System healthy</span>}
         </div>
@@ -129,7 +129,7 @@ export function Sidebar({ caseId }: { caseId?: string }) {
               {!collapsed && (
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate">{user.display_name}</span>
-                  <span className="truncate text-[10px] text-text-3">{user.role}</span>
+                  <span className="truncate text-[10px] text-text-2">{user.role}</span>
                 </span>
               )}
             </DropdownMenuTrigger>
@@ -144,7 +144,7 @@ export function Sidebar({ caseId }: { caseId?: string }) {
           type="button"
           onClick={toggleSidebar}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="focus-ring mt-1 flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-text-3 hover:bg-control hover:text-text"
+          className="focus-ring mt-1 flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-text-2 hover:bg-control hover:text-text"
         >
           {collapsed ? <ChevronsRight size={16} strokeWidth={1.5} /> : <ChevronsLeft size={16} strokeWidth={1.5} />}
           {!collapsed && <span className="text-xs">Collapse</span>}

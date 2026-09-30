@@ -14,7 +14,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableHeader, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 import { formatBytes, formatDuration, formatTimecodeUs } from "@/lib/format";
 import { useUiStore } from "@/store/ui";
 import { cn } from "@/lib/utils";
@@ -49,7 +51,11 @@ export function RecordingsScreen({ cid }: { cid: string }) {
 
   const recordingsQuery = useQuery({
     queryKey: ["recordings", cid],
-    queryFn: async () => (await api.GET("/api/cases/{cid}/recordings", { params: { path: { cid } } })).data ?? [],
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/cases/{cid}/recordings", { params: { path: { cid } } });
+      if (error) throw errorFromResponse(response, "recordings could not be loaded");
+      return data ?? [];
+    },
   });
   const clocksQuery = useQuery({
     queryKey: ["clock-models", cid],
@@ -156,6 +162,8 @@ export function RecordingsScreen({ cid }: { cid: string }) {
             <Skeleton key={i} className="h-9 w-full" />
           ))}
         </div>
+      ) : recordingsQuery.isError ? (
+        <QueryErrorState error={recordingsQuery.error} subject="recordings" onRetry={() => void recordingsQuery.refetch()} />
       ) : filtered.length === 0 ? (
         <EmptyRecordings hasAny={total > 0} />
       ) : (

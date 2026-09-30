@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, FilePlus2, FileText } from "lucide-react";
+import { FilePlus2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 import { AiDraftSection } from "./components/ai-draft-section";
 import { ReportCard } from "./components/report-card";
 import { csrfHeaders } from "./lib/csrf";
@@ -39,8 +41,8 @@ export function ReportsScreen({ caseId }: { caseId: string }) {
   const reportsQuery = useQuery({
     queryKey: ["reports", caseId],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/cases/{cid}/reports", { params: { path: { cid: caseId } } });
-      if (error || !data) throw new Error("reports unavailable");
+      const { data, error, response } = await api.GET("/api/cases/{cid}/reports", { params: { path: { cid: caseId } } });
+      if (error || !data) throw errorFromResponse(response, "reports could not be loaded");
       return data;
     },
   });
@@ -117,15 +119,8 @@ export function ReportsScreen({ caseId }: { caseId: string }) {
           <Skeleton className="h-28 w-full" />
         </div>
       ) : reportsQuery.isError ? (
-        <div role="alert" className="flex flex-col items-center gap-3 rounded-[var(--radius-panel)] border border-line bg-panel p-10 text-center">
-          <AlertTriangle size={22} strokeWidth={1.5} className="text-danger" />
-          <div>
-            <p className="text-[13px] font-medium text-text">Couldn't load this case's reports</p>
-            <p className="mt-1 text-[12px] text-text-2">The case may not exist, or the session may have expired.</p>
-          </div>
-          <Button variant="secondary" size="sm" onClick={() => void reportsQuery.refetch()}>
-            Try again
-          </Button>
+        <div role="alert" className="rounded-[var(--radius-panel)] border border-line bg-panel">
+          <QueryErrorState error={reportsQuery.error} subject="this case's reports" onRetry={() => void reportsQuery.refetch()} />
         </div>
       ) : reports.length === 0 ? (
         <EmptyReports action={generateButton} />

@@ -13,8 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { QueryErrorState } from "@/components/shell/query-error-state";
 import { cn } from "@/lib/utils";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 import type { components } from "@/api/schema.gen";
 
 type CaseStatus = components["schemas"]["Case"]["status"];
@@ -35,13 +37,15 @@ function CasesScreen() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<CaseStatus | null>(null);
 
-  const { data: cases, isLoading } = useQuery({
+  const casesQuery = useQuery({
     queryKey: ["cases"],
     queryFn: async () => {
-      const { data } = await api.GET("/api/cases");
+      const { data, error, response } = await api.GET("/api/cases");
+      if (error) throw errorFromResponse(response, "cases could not be loaded");
       return data ?? [];
     },
   });
+  const { data: cases, isLoading } = casesQuery;
 
   const filtered = useMemo(() => {
     return (cases ?? []).filter((c) => {
@@ -100,6 +104,8 @@ function CasesScreen() {
               <Skeleton key={i} className="h-11 w-full" />
             ))}
           </div>
+        ) : casesQuery.isError ? (
+          <QueryErrorState error={casesQuery.error} subject="cases" onRetry={() => void casesQuery.refetch()} />
         ) : filtered.length === 0 ? (
           <EmptyState hasCases={(cases?.length ?? 0) > 0} />
         ) : (

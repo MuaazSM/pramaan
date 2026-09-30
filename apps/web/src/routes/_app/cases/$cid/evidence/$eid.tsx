@@ -5,6 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ScreenShell } from "@/components/shell/screen-shell";
 import { EvidenceDetailScreen } from "@/features/evidence/evidence-detail-screen";
+import { useCaseLabel, useEvidenceLabel } from "@/api/labels";
 
 export const Route = createFileRoute("/_app/cases/$cid/evidence/$eid")({
   component: EvidenceDetailRoute,
@@ -12,13 +13,15 @@ export const Route = createFileRoute("/_app/cases/$cid/evidence/$eid")({
 
 function EvidenceDetailRoute() {
   const { cid, eid } = Route.useParams();
+  const caseLabel = useCaseLabel(cid);
+  const evidenceLabel = useEvidenceLabel(eid);
   return (
     <ScreenShell
       segments={[
         { label: "Cases", to: "/cases" },
-        { label: cid, to: `/cases/${cid}` },
+        { label: caseLabel, to: `/cases/${cid}` },
         { label: "Evidence", to: `/cases/${cid}/evidence` },
-        { label: eid },
+        { label: evidenceLabel },
       ]}
       caseId={cid}
       showCustodySeal

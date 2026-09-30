@@ -65,7 +65,7 @@ export function DropdownMenuCheckboxItem({
 }
 
 export function DropdownMenuLabel({ className, ...props }: DropdownPrimitive.DropdownMenuLabelProps) {
-  return <DropdownPrimitive.Label className={cn("px-2 py-1 text-[11px] font-medium text-text-3", className)} {...props} />;
+  return <DropdownPrimitive.Label className={cn("px-2 py-1 text-[11px] font-medium text-text-2", className)} {...props} />;
 }
 
 export function DropdownMenuSeparator({ className, ...props }: DropdownPrimitive.DropdownMenuSeparatorProps) {
@@ -73,7 +73,7 @@ export function DropdownMenuSeparator({ className, ...props }: DropdownPrimitive
 }
 
 export function DropdownMenuShortcut({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
-  return <span className={cn("ml-auto font-mono text-[11px] text-text-3", className)} {...props} />;
+  return <span className={cn("ml-auto font-mono text-[11px] text-text-2", className)} {...props} />;
 }
 
 export { ChevronRight as DropdownMenuSubTriggerIcon };

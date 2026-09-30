@@ -32,7 +32,10 @@ test.describe("F2 mock e2e", () => {
     // streams over the mock WS (src/mocks/ws-handlers.ts) through to "done" again.
     await expect(page.getByText("done", { exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "Run scan" }).click();
-    await expect(page.getByText("Scan started", { exact: false })).toBeVisible();
+    // .first(): under load, the toast notification ("Notification Scan started…") and the
+    // pipeline panel's own status text can both match this text briefly — either is proof the
+    // scan started, so pin to one to avoid a strict-mode ambiguity flake (found in F5 QA).
+    await expect(page.getByText("Scan started", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("done", { exact: true }).first()).toBeVisible({ timeout: 10_000 });
 
     // Device log events table — at least the hdd_format and time_change rows from the fixture.

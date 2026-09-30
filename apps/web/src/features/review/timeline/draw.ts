@@ -83,6 +83,7 @@ export interface DrawCtx {
   rect(x: number, y: number, w: number, h: number): void;
   clip(): void;
   fillText(text: string, x: number, y: number): void;
+  measureText(text: string): { width: number };
   setLineDash(segments: number[]): void;
   fillStyle: string | CanvasGradient | CanvasPattern;
   strokeStyle: string | CanvasGradient | CanvasPattern;
@@ -103,6 +104,22 @@ export interface DrawModel {
   trackH?: number;
 }
 
+// Minimum gap (px) kept between the right edge of one ruler label and the left edge of the
+// next, so labels never collide however wide a particular level's string is (a "day" label
+// like "2026-03-12" is much wider than an "hour" label like "14:00", and STEP_CANDIDATES'
+// tick spacing only guarantees >= MIN_TICK_PX=64px between *ticks*, not between *labels*).
+const LABEL_GAP_PX = 12;
+
+/**
+ * Adaptive tick density (docs/04-FRONTEND.md §5.1): `computeTicks` guarantees ticks themselves
+ * never crowd below MIN_TICK_PX, but labelling every 4th tick regardless of actual on-screen
+ * spacing under-labels wide spans (F5 bug: only ~2 labels visible at the default 24h zoom,
+ * where the chosen step's ticks land well short of the 4-tick modulo). Instead, label greedily
+ * left-to-right using the label's *measured* pixel width: draw a tick's label whenever it fits
+ * without overlapping the previously-drawn label, so denser regions (narrow labels, e.g.
+ * "14:00") get more labels than sparse ones (wide labels, e.g. a full date) for the same pixel
+ * budget, and a tick is drawn "major" (taller, brighter) exactly when it earns a label.
+ */
 function drawRuler(ctx: DrawCtx, viewport: Viewport, resolveColor: (t: string) => string): void {
   const ticks = computeTicks(viewport);
   ctx.strokeStyle = resolveColor("--line");
@@ -114,16 +131,22 @@ function drawRuler(ctx: DrawCtx, viewport: Viewport, resolveColor: (t: string) =
 
   ctx.font = "11px var(--font-mono, monospace)";
   ctx.textBaseline = "middle";
+
+  let nextLabelMinX = -Infinity;
   for (const t of ticks) {
     const x = usToPx(t.us, viewport);
-    ctx.strokeStyle = t.major ? resolveColor("--line-strong") : resolveColor("--line");
+    const labelX = x + 4;
+    const labelWidth = ctx.measureText(t.label).width;
+    const canLabel = labelX >= nextLabelMinX && labelX + labelWidth + 4 <= viewport.widthPx;
+    ctx.strokeStyle = canLabel ? resolveColor("--line-strong") : resolveColor("--line");
     ctx.beginPath();
-    ctx.moveTo(x + 0.5, MARKER_ROW_H + RULER_H - (t.major ? 10 : 5));
+    ctx.moveTo(x + 0.5, MARKER_ROW_H + RULER_H - (canLabel ? 10 : 5));
     ctx.lineTo(x + 0.5, MARKER_ROW_H + RULER_H);
     ctx.stroke();
-    if (t.major) {
+    if (canLabel) {
       ctx.fillStyle = resolveColor("--text-2");
-      ctx.fillText(t.label, x + 4, MARKER_ROW_H + RULER_H / 2 - 4);
+      ctx.fillText(t.label, labelX, MARKER_ROW_H + RULER_H / 2 - 4);
+      nextLabelMinX = labelX + labelWidth + LABEL_GAP_PX;
     }
   }
 }

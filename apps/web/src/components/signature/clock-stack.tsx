@@ -44,7 +44,7 @@ export function ClockStack({
               </span>
               {r.offsetLabel && <span className="text-[10px] text-warn">{r.offsetLabel}</span>}
               {r.confidence != null && (
-                <span className="text-[10px] text-text-3">{Math.round(r.confidence * 100)}%</span>
+                <span className="text-[10px] text-text-2">{Math.round(r.confidence * 100)}%</span>
               )}
             </dd>
           </div>

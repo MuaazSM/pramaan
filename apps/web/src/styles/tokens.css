@@ -2,6 +2,16 @@
  * Pramaan design tokens — source of truth for apps/web.
  * Import once at the app root; Tailwind v4 reads the @theme block below.
  * Dark is the default; add data-theme="light" on <html> for light mode.
+ *
+ * F5 deliberate divergence from references/tokens.css (docs/progress/F5.md "Decisions"): the
+ * dark theme's `--accent` below is `--brand-600`, not `--brand-500` as in the reference file.
+ * White text on `--brand-500` (#6E6CF5) measures 4.10:1 (Lighthouse `color-contrast`, WCAG AA
+ * needs 4.5:1) wherever `--accent` backs white text — the primary button, the review workspace's
+ * active grid-layout toggle. `--brand-600` (#5451D6) measures 5.96:1. The light theme block
+ * further down already resolves `--accent` to `--brand-600` (not `--brand-500`), so this makes
+ * dark mode consistent with light mode's own already-correct choice rather than a new deviation
+ * from brand intent. `--brand-500` itself is untouched and still used directly wherever the
+ * asymmetry doesn't matter (non-text fills via color-mix, `--selected`, channel/status accents).
  */
 
 :root,
@@ -57,7 +67,7 @@
   --text-2: var(--ink-300);
   --text-3: var(--ink-400);
   --text-disabled: var(--ink-500);
-  --accent: var(--brand-500);
+  --accent: var(--brand-600);
   --accent-text: var(--brand-400);
   --focus: var(--brand-300);
   --selected: color-mix(in oklab, var(--brand-500) 16%, transparent);

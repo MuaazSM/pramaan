@@ -54,10 +54,10 @@ export function JobLog({
           return (
             <li key={stage.name} className="flex items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5">
               <Icon size={13} strokeWidth={2} className={cn("shrink-0", STAGE_CLASS[stage.status])} />
-              <span className={cn("text-xs", stage.status === "pending" ? "text-text-3" : "text-text")}>
+              <span className={cn("text-xs", stage.status === "pending" ? "text-text-2" : "text-text")}>
                 {stage.name.replace(/_/g, " ")}
               </span>
-              {stage.message && <span className="truncate text-[11px] text-text-3">{stage.message}</span>}
+              {stage.message && <span className="truncate text-[11px] text-text-2">{stage.message}</span>}
               {stage.status === "running" && (
                 <span className="ml-auto font-mono text-[11px] tabular-nums text-warn">{Math.round(stage.pct)}%</span>
               )}
@@ -70,7 +70,7 @@ export function JobLog({
         <button
           type="button"
           onClick={() => setLogOpen((v) => !v)}
-          className="focus-ring flex items-center gap-1 rounded px-1 text-[11px] font-medium text-text-3 hover:text-text"
+          className="focus-ring flex items-center gap-1 rounded px-1 text-[11px] font-medium text-text-2 hover:text-text"
         >
           <ChevronDown size={12} strokeWidth={1.75} className={cn("transition-transform", logOpen && "rotate-180")} />
           {logOpen ? "Hide" : "Show"} log ({logLines.length})

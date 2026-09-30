@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { errorFromResponse } from "@/lib/api-error";
 
 /**
  * `GET /frames/{fid}/hex` (before/after byte window around the payload — apps/api/openapi.json's
@@ -12,9 +13,10 @@ export function useFrameHex(frameId: string | undefined, before = 256, after = 5
   return useQuery({
     queryKey: ["frame-hex", frameId, before, after],
     queryFn: async () => {
-      const { data } = await api.GET("/api/frames/{fid}/hex", {
+      const { data, error, response } = await api.GET("/api/frames/{fid}/hex", {
         params: { path: { fid: frameId! }, query: { before, after } },
       });
+      if (error) throw errorFromResponse(response, "the byte window could not be loaded");
       return data ?? null;
     },
     enabled: Boolean(frameId),

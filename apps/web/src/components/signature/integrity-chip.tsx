@@ -51,7 +51,7 @@ export function IntegrityChip({
         <Icon size={9} strokeWidth={2.5} className="text-[var(--ink-950)]" />
       </span>
       <span className={cn("font-medium", colorClass)}>{label}</span>
-      <span className="text-text-3">·</span>
+      <span className="text-text-2">·</span>
       <span className="font-mono text-text-2">
         {algo} {shortHash(hash)}
       </span>

@@ -30,11 +30,11 @@ export function CustodySeal({
       <Icon size={13} strokeWidth={1.75} className={ok ? "text-ok" : "text-danger"} />
       <span className={cn("font-medium", ok ? "text-ok" : "text-danger")}>Chain {ok ? "✓" : "✗"}</span>
       <span>{entryCount} entries</span>
-      <span className="text-text-3">·</span>
+      <span className="text-text-2">·</span>
       <span>
         head <span className="font-mono text-text-2">{shortHash(headHash)}</span>
       </span>
-      <span className="text-text-3">·</span>
+      <span className="text-text-2">·</span>
       <span className="font-mono">{formatTimecode(anchoredAtIso)}</span>
     </div>
   );

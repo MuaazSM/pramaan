@@ -7,6 +7,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ScreenShell } from "@/components/shell/screen-shell";
 import { ProveView } from "@/features/prove/prove-view";
+import { useCaseLabel } from "@/api/labels";
 
 export const Route = createFileRoute("/_app/cases/$cid/frames/$fid/prove")({
   component: ProveScreen,
@@ -14,11 +15,12 @@ export const Route = createFileRoute("/_app/cases/$cid/frames/$fid/prove")({
 
 function ProveScreen() {
   const { cid, fid } = Route.useParams();
+  const caseLabel = useCaseLabel(cid);
   return (
     <ScreenShell
       segments={[
         { label: "Cases", to: "/cases" },
-        { label: cid, to: `/cases/${cid}` },
+        { label: caseLabel, to: `/cases/${cid}` },
         { label: "Review", to: `/cases/${cid}/review` },
         { label: `Frame ${fid}` },
       ]}
