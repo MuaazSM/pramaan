@@ -472,6 +472,121 @@ def _has_constant_significant_byte(c: _Candidate, samples: list[_Sample], header
     return len(values) <= 1
 
 
+#: FIX-13 (docs/01-FORENSIC-CORE.md §4.8): the natural next width for each
+#: supported width, used when deciding whether a candidate that scores
+#: perfectly at a narrow width is actually the low-order half of a wider,
+#: naturally-aligned field whose high-order half is constant zero across
+#: every *sampled* record (the value simply never got large enough to need
+#: it in this corpus — not evidence the field is really that narrow).
+_NEXT_WIDTH = {2: 4, 4: 8}
+#: How much to lower a field's reported confidence when its width was
+#: decided by this zero-padding rule alone, rather than by direct evidence
+#: (every sampled value happened to fit the narrow width; a real device
+#: with larger values would decide it differently). Values are never
+#: affected — only the reported width/offset — so this is a small,
+#: deliberately modest penalty, not a correctness discount.
+_ZERO_PAD_CONFIDENCE_PENALTY = 0.03
+
+
+def _bytes_are_constant_zero(
+    samples: list[_Sample], header_len: int, span: tuple[int, int]
+) -> bool:
+    """True iff header-relative byte positions ``span = [start, end)`` are
+    exactly ``0x00`` in *every* sample — not merely low-entropy or
+    "mostly" zero. This is deliberately the strictest possible check: it is
+    what lets ``_extend_candidate_if_zero_padded`` treat these bytes as
+    unclaimed padding rather than data, so it must never pass for a byte
+    that carries any real information (a genuine adjacent field, however
+    narrow its observed range, will vary and fail this check)."""
+    start, end = span
+    for s in samples:
+        local = (WINDOW - header_len) + start
+        if local < 0 or local + (end - start) > WINDOW:
+            return False
+        if any(b != 0 for b in s.window[local : local + (end - start)]):
+            return False
+    return True
+
+
+def _naturally_aligned(offset: int, width: int, magic_end: int) -> bool:
+    """FIX-13: ``offset`` counts as "naturally aligned" for ``width`` if
+    it's a multiple of ``width`` either from the header start (offset 0,
+    the usual convention for a fixed-position binary header) or from the
+    end of the discovered magic (some vendor layouts pad each per-record
+    section, not the header as a whole, to a boundary). Real devices lay
+    out fixed-width integer fields on a natural boundary; requiring one of
+    these two reference points before widening a candidate keeps the rule
+    from firing on a coincidental byte range that merely happens to be
+    zero-padded without actually being how the device aligns its fields."""
+    return offset % width == 0 or (offset - magic_end) % width == 0
+
+
+def _extend_candidate_if_zero_padded(
+    candidate: _Candidate,
+    samples: list[_Sample],
+    header_len: int,
+    magic_span: tuple[int, int],
+    used_ranges: list[tuple[int, int]],
+) -> tuple[_Candidate, bool]:
+    """FIX-13 (docs/01-FORENSIC-CORE.md §4.8): widen ``candidate`` to the
+    next natural width (2->4, 4->8) — repeating while further widening
+    still qualifies — when doing so only absorbs bytes that are:
+
+    1. constant ``0x00`` across *every* sampled record
+       (:func:`_bytes_are_constant_zero` — the strict, per-sample check;
+       never the cross-sample statistical mode magic detection uses), so
+       real data is never swallowed;
+    2. not already claimed by another accepted field (checked against
+       ``used_ranges``, which includes the magic span) or by the magic
+       itself, so this never re-opens the FIX-9 channel/magic boundary
+       fix; and
+    3. positioned so the *wider* field's offset is naturally aligned
+       (:func:`_naturally_aligned`) to the header start or the magic's
+       end — real per-frame headers lay fixed-width counters out on
+       natural boundaries; a coincidentally zero-padded, unaligned byte
+       range is left alone.
+
+    Big-endian candidates absorb the bytes *before* their current offset
+    (the high-order half of a wider big-endian value comes first);
+    little-endian candidates absorb the bytes *after* (the high-order half
+    of a wider little-endian value comes last). Values are never changed
+    by this — the absorbed bytes are all zero — so recall is unaffected;
+    only the reported offset/width, and (by the caller) the confidence,
+    change."""
+    current = candidate
+    extended = False
+    while True:
+        next_width = _NEXT_WIDTH.get(current.width)
+        if next_width is None or next_width > header_len:
+            break
+        pad_width = next_width - current.width
+        if current.endian == "be":
+            new_offset = current.offset - pad_width
+            pad_range = (new_offset, current.offset)
+        else:
+            new_offset = current.offset
+            pad_range = (current.offset + current.width, current.offset + next_width)
+        if new_offset < 0 or new_offset + next_width > header_len:
+            break
+        wide_range = (new_offset, new_offset + next_width)
+        if any(a < wide_range[1] and wide_range[0] < b for a, b in used_ranges):
+            break  # the padding (or the field itself) overlaps an already-claimed byte
+        if not _naturally_aligned(new_offset, next_width, magic_span[1]):
+            break
+        if not _bytes_are_constant_zero(samples, header_len, pad_range):
+            break  # not padding — real, varying data belongs to some other field
+        extended_series = _extract_series(
+            samples, header_len, new_offset, next_width, current.endian
+        )
+        if extended_series is None:
+            break
+        current = _Candidate(
+            offset=new_offset, width=next_width, endian=current.endian, series=extended_series
+        )
+        extended = True
+    return current, extended
+
+
 def _all_candidates(
     samples: list[_Sample], header_len: int, magic_range: tuple[int, int]
 ) -> list[_Candidate]:
@@ -588,15 +703,27 @@ def infer_layout(reader: EvidenceReader) -> InferredLayout | None:
     if ts_best is not None:
         rng = (ts_best[0].offset, ts_best[0].offset + ts_best[0].width)
         if not _overlaps(rng):
+            # FIX-13: widen to the next natural width if the extra bytes
+            # are unclaimed, constant-zero padding (see
+            # `_extend_candidate_if_zero_padded`) — same rule as
+            # length/sequence below, applied here too in case a
+            # naturally-wider timestamp (e.g. a device that stores a
+            # 64-bit epoch but this corpus's values all fit the low 32
+            # bits) has the same shape. A no-op whenever it doesn't apply.
+            ts_cand, ts_extended = _extend_candidate_if_zero_padded(
+                ts_best[0], samples, header_len, magic_span, used_ranges
+            )
+            rng = (ts_cand.offset, ts_cand.offset + ts_cand.width)
             used_ranges.append(rng)
+            confidence = ts_best[1] - (_ZERO_PAD_CONFIDENCE_PENALTY if ts_extended else 0.0)
             fields.append(
                 InferredField(
                     name="timestamp",
-                    offset=ts_best[0].offset,
-                    width=ts_best[0].width,
-                    endian=ts_best[0].endian,
+                    offset=ts_cand.offset,
+                    width=ts_cand.width,
+                    endian=ts_cand.endian,
                     unit=ts_best[3],
-                    confidence=ts_best[1],
+                    confidence=confidence,
                     support=ts_best[2],
                 )
             )
@@ -626,16 +753,29 @@ def infer_layout(reader: EvidenceReader) -> InferredLayout | None:
         default=None,
     )
     if length_best is not None and length_best[1] >= LENGTH_MATCH_MIN and length_best[2] > 0:
-        rng = (length_best[0].offset, length_best[0].offset + length_best[0].width)
+        # FIX-13: the tie-break above (`_has_constant_significant_byte`)
+        # deliberately prefers the narrowest candidate that fully explains
+        # the data, which is *also* what a length value that never exceeded
+        # a narrow range in this corpus looks like — a real device may
+        # reserve a wider, naturally-aligned field for it. Widen back out
+        # when the evidence for that is solid (see
+        # `_extend_candidate_if_zero_padded`): the "extra" bytes are
+        # unclaimed and provably zero in every sample, and the wider
+        # offset is naturally aligned. Values are unchanged either way.
+        length_cand, length_extended = _extend_candidate_if_zero_padded(
+            length_best[0], samples, header_len, magic_span, used_ranges
+        )
+        rng = (length_cand.offset, length_cand.offset + length_cand.width)
         used_ranges.append(rng)
+        confidence = length_best[1] - (_ZERO_PAD_CONFIDENCE_PENALTY if length_extended else 0.0)
         fields.append(
             InferredField(
                 name="length",
-                offset=length_best[0].offset,
-                width=length_best[0].width,
-                endian=length_best[0].endian,
+                offset=length_cand.offset,
+                width=length_cand.width,
+                endian=length_cand.endian,
                 unit="none",
-                confidence=length_best[1],
+                confidence=confidence,
                 support=length_best[2],
             )
         )
@@ -656,16 +796,23 @@ def infer_layout(reader: EvidenceReader) -> InferredLayout | None:
         default=None,
     )
     if sequence_best is not None and sequence_best[1] >= SEQUENCE_STEP_MIN and sequence_best[2] > 0:
-        rng = (sequence_best[0].offset, sequence_best[0].offset + sequence_best[0].width)
+        # FIX-13: same zero-padding width-extension rule as `length` above.
+        sequence_cand, sequence_extended = _extend_candidate_if_zero_padded(
+            sequence_best[0], samples, header_len, magic_span, used_ranges
+        )
+        rng = (sequence_cand.offset, sequence_cand.offset + sequence_cand.width)
         used_ranges.append(rng)
+        confidence = sequence_best[1] - (
+            _ZERO_PAD_CONFIDENCE_PENALTY if sequence_extended else 0.0
+        )
         fields.append(
             InferredField(
                 name="sequence",
-                offset=sequence_best[0].offset,
-                width=sequence_best[0].width,
-                endian=sequence_best[0].endian,
+                offset=sequence_cand.offset,
+                width=sequence_cand.width,
+                endian=sequence_cand.endian,
                 unit="none",
-                confidence=sequence_best[1],
+                confidence=confidence,
                 support=sequence_best[2],
             )
         )
@@ -685,16 +832,23 @@ def infer_layout(reader: EvidenceReader) -> InferredLayout | None:
         default=None,
     )
     if flags_best is not None and flags_best[1] > 0.9 and flags_best[2] > 0:
-        rng = (flags_best[0].offset, flags_best[0].offset + flags_best[0].width)
+        # FIX-13: same zero-padding width-extension rule as `length` above
+        # (flags is a low-cardinality bitfield, but the same "narrow
+        # candidate padded with unclaimed zero bytes" shape can occur).
+        flags_cand, flags_extended = _extend_candidate_if_zero_padded(
+            flags_best[0], samples, header_len, magic_span, used_ranges
+        )
+        rng = (flags_cand.offset, flags_cand.offset + flags_cand.width)
         used_ranges.append(rng)
+        confidence = flags_best[1] - (_ZERO_PAD_CONFIDENCE_PENALTY if flags_extended else 0.0)
         fields.append(
             InferredField(
                 name="flags",
-                offset=flags_best[0].offset,
-                width=flags_best[0].width,
-                endian=flags_best[0].endian,
+                offset=flags_cand.offset,
+                width=flags_cand.width,
+                endian=flags_cand.endian,
                 unit="none",
-                confidence=flags_best[1],
+                confidence=confidence,
                 support=flags_best[2],
             )
         )
@@ -738,10 +892,30 @@ def _magic_header_span(
     return 0, len(magic_bytes)
 
 
-def summarize_layout(layout: InferredLayout) -> str:
+#: FIX-13: appended after a field's piece in `summarize_layout`/`emit_ksy`
+#: when its width was decided by `_extend_candidate_if_zero_padded` rather
+#: than by a value that actually needed the extra bytes (docs/
+#: 01-FORENSIC-CORE.md §4.8 step 6 asks for a human-readable rationale
+#: alongside the layout; `InferredLayout`/`InferredField` stay unchanged —
+#: a shared contract — so this is threaded through as an explicit,
+#: opt-in, backward-compatible parameter rather than a new model field).
+_ZERO_PAD_RATIONALE = (
+    "width widened from a narrower/aligned reading: high-order bytes are "
+    "0 in every sampled record, so a real device using larger values "
+    "would need this wider field"
+)
+
+
+def summarize_layout(
+    layout: InferredLayout, *, extended_fields: frozenset[str] = frozenset()
+) -> str:
     """A human-readable summary for the UI (docs/01-FORENSIC-CORE.md §4.8
     step 6), e.g. "20-byte header, magic 58565231, channel u16 be @+4,
-    timestamp u64 be us @+12, length u32 le @+8"."""
+    timestamp u64 be us @+12, length u32 le @+8". ``extended_fields`` names
+    any field whose reported width was widened by the FIX-13 zero-padding
+    rule (`_extend_candidate_if_zero_padded`); when named, its piece gets a
+    short rationale so an examiner reviewing the draft sees *why* the
+    width was reported wider than the narrowest value-matching read."""
     parts = [f"{layout.header_len}-byte header"]
     if layout.magic:
         parts.append(f"magic {layout.magic}")
@@ -750,15 +924,21 @@ def summarize_layout(layout: InferredLayout) -> str:
         piece = f"{f.name} u{width_bits} {f.endian} @+{f.offset}"
         if f.unit != "none":
             piece += f" {f.unit}"
+        if f.name in extended_fields:
+            piece += f" ({_ZERO_PAD_RATIONALE})"
         parts.append(piece)
     return ", ".join(parts)
 
 
-def emit_ksy(layout: InferredLayout, out_dir: Path) -> Path:
+def emit_ksy(
+    layout: InferredLayout, out_dir: Path, *, extended_fields: frozenset[str] = frozenset()
+) -> Path:
     """Writes a draft Kaitai Struct spec for ``layout`` to
     ``<out_dir>/<layout.id>.ksy`` (docs/01-FORENSIC-CORE.md §4.8 step 6;
     per §4.5's fallback, this is a *draft* alongside the hand-written
-    ``struct``-based :class:`InferredParser`, not compiler output)."""
+    ``struct``-based :class:`InferredParser`, not compiler output).
+    ``extended_fields`` — see :func:`summarize_layout` — adds the same
+    zero-padding-width rationale as a comment on the affected field."""
     out_dir.mkdir(parents=True, exist_ok=True)
     lines = [
         "meta:",
@@ -784,6 +964,8 @@ def emit_ksy(layout: InferredLayout, out_dir: Path) -> Path:
             f"  # {f.name} @ offset {f.offset}, width {f.width}, endian {f.endian}, "
             f"unit={f.unit}, confidence={f.confidence:.2f}, support={f.support} ({type_code})"
         )
+        if f.name in extended_fields:
+            lines.append(f"  #   rationale: {_ZERO_PAD_RATIONALE}")
     if layout.magic:
         lines.append(f"  # magic: {layout.magic}")
     path = out_dir / f"{layout.id}.ksy"
