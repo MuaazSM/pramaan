@@ -23,6 +23,9 @@ import { wsHandlers } from "./ws-handlers";
 // their own module (review-handlers.ts/review-fixtures.ts) per F3a's ownership; spread into the
 // shared array below rather than growing this file's own fixture imports.
 import { reviewHandlers } from "./review-handlers";
+// Prove-it / frame inspector (F3b) handlers — frame hex view + thumbnail. Own module per F3b's
+// ownership (src/mocks/prove-fixtures.ts / prove-handlers.ts); spread into the shared array below.
+import { proveHandlers } from "./prove-handlers";
 
 type Job = components["schemas"]["Job"];
 type JobStage = components["schemas"]["JobStage"];
@@ -273,7 +276,7 @@ const httpHandlers = [
   }),
 ];
 
-export const handlers = [...httpHandlers, ...reviewHandlers, ...wsHandlers];
+export const handlers = [...httpHandlers, ...reviewHandlers, ...wsHandlers, ...proveHandlers];
 
 function hashCode(s: string): number {
   let h = 0;

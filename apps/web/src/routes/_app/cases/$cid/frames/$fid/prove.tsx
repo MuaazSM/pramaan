@@ -1,27 +1,31 @@
-/** /cases/$cid/frames/$fid/prove — "Prove it" hex view. Designed placeholder for this wave. */
+/**
+ * /cases/$cid/frames/$fid/prove — "Prove it" hex view.
+ * Primary action: Copy proof. Real screen (docs/progress/F3b.md) — see
+ * src/features/prove/prove-view.tsx for the implementation; this file only owns route wiring and
+ * the ScreenShell chrome, per F1's routing convention.
+ */
 import { createFileRoute } from "@tanstack/react-router";
-import { Binary } from "lucide-react";
-import { PlaceholderScreen } from "@/components/shell/placeholder-screen";
+import { ScreenShell } from "@/components/shell/screen-shell";
+import { ProveView } from "@/features/prove/prove-view";
 
 export const Route = createFileRoute("/_app/cases/$cid/frames/$fid/prove")({
-  component: ProvePlaceholder,
+  component: ProveScreen,
 });
 
-function ProvePlaceholder() {
-    const { cid, fid } = Route.useParams();
-    return (
-      <PlaceholderScreen
-        segments={[
-          { label: "Cases", to: "/cases" },
-          { label: cid, to: `/cases/${cid}` },
-          { label: "Review", to: `/cases/${cid}/review` },
-          { label: `Frame ${fid}` },
-        ]}
-        caseId={cid}
-        icon={Binary}
-        title="Prove it"
-        description="An ImHex-style hex grid — offset gutter, 16-byte rows, ASCII pane — with annotated vendor header fields, a decoding inspector, sector numbers, and a live SHA-256 recompute."
-        owner="WEB (Wave 3)"
-      />
-    );
+function ProveScreen() {
+  const { cid, fid } = Route.useParams();
+  return (
+    <ScreenShell
+      segments={[
+        { label: "Cases", to: "/cases" },
+        { label: cid, to: `/cases/${cid}` },
+        { label: "Review", to: `/cases/${cid}/review` },
+        { label: `Frame ${fid}` },
+      ]}
+      caseId={cid}
+      showCustodySeal
+    >
+      <ProveView caseId={cid} frameId={fid} />
+    </ScreenShell>
+  );
 }

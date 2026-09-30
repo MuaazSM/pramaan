@@ -21,6 +21,12 @@ const SIZES = [
 
 const CASE_ID = "case_cr20260412";
 const EVIDENCE_ID = "ev_hiksim01";
+// F3b: prove-it / frame inspector. FRAME_ID is an ordinary CH2 frame (verified state);
+// MISMATCH_FRAME_ID must stay in sync with src/mocks/prove-fixtures.ts's DEMO_MISMATCH_FRAME_ID
+// (the one frame the mock hex handler deliberately mismatches, so the danger/mismatch integrity
+// state has a real screen for the visual QA loop and gallery to review).
+const FRAME_ID = "frm_ch2_0010";
+const MISMATCH_FRAME_ID = "frm_ch1_0050";
 
 const ROUTES: { name: string; path: string; ready?: (page: Page) => Promise<void>; scrollExpand?: boolean }[] = [
   { name: "login", path: "/login" },
@@ -36,6 +42,12 @@ const ROUTES: { name: string; path: string; ready?: (page: Page) => Promise<void
   // table/detail screens above — so it opts out of expandScrollContainers (which would force
   // `<main>` to `height: auto` and collapse the percentage-height split panes to 0).
   { name: "review", path: `/cases/${CASE_ID}/review`, ready: login, scrollExpand: false },
+  // F3b: prove-it hex view + frame inspector (docs/progress/F3b.md). Two states: an ordinary
+  // frame (verified — the common case) and the deliberately-mismatched demo frame, which is the
+  // "inspector gallery/demo state" the task brief asks for — the danger/mismatch integrity state
+  // otherwise never appears in any other screenshot in this repo.
+  { name: "prove-it", path: `/cases/${CASE_ID}/frames/${FRAME_ID}/prove`, ready: login },
+  { name: "prove-it-mismatch", path: `/cases/${CASE_ID}/frames/${MISMATCH_FRAME_ID}/prove`, ready: login },
   { name: "design-gallery", path: "/design", ready: login },
 ];
 
@@ -91,7 +103,10 @@ for (const size of SIZES) {
         await setTheme(page, theme);
         await page.reload();
         await page.waitForLoadState("networkidle");
-        await page.waitForTimeout(300);
+        // 700ms (not 300ms): long enough for the prove-it screen's SHA-256 recompute animation
+        // (features/prove/components/sha-recompute.tsx's 480ms perceivable-computing delay) to
+        // settle to its verified/mismatch state before the screenshot, not the transient spinner.
+        await page.waitForTimeout(700);
         if (route.scrollExpand !== false) await expandScrollContainers(page);
         await page.screenshot({
           path: path.join(OUT_DIR, `${route.name}-${size.name}-${theme}.png`),
