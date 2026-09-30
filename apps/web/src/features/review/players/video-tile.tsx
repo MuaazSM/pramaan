@@ -79,7 +79,7 @@ export function VideoTile({ channel, mapping, playheadUs, leader, videoRef }: Vi
         {gap && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-[color-mix(in_oklab,black_55%,transparent)]">
             <VideoOff size={18} strokeWidth={1.5} className="text-text-3" />
-            <span className="text-[11px] font-medium text-text-2">No footage at this time</span>
+            <span className="text-label font-medium text-text-2">No footage at this time</span>
           </div>
         )}
         <div
@@ -88,18 +88,18 @@ export function VideoTile({ channel, mapping, playheadUs, leader, videoRef }: Vi
           aria-hidden
         />
         {leader && (
-          <span className="absolute right-2 top-2 rounded-full border border-[var(--brand-400)] bg-[var(--ink-950)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-[var(--brand-300)]">
-            leader
+          <span className="absolute right-2 top-2 rounded-full border border-[var(--brand-400)] bg-[var(--ink-950)] px-1.5 py-0.5 text-caption font-medium text-[var(--brand-300)]">
+            Leader
           </span>
         )}
       </div>
       <div className="flex items-center justify-between gap-2 bg-panel px-2 py-1">
-        <span className="truncate text-xs font-medium text-text">{channel?.label ?? "No channel"}</span>
+        <span className="truncate text-label font-medium text-text">{channel?.label ?? "No channel"}</span>
         <div className="flex shrink-0 items-center gap-1.5">
           {source && (
             <span
               className={cn(
-                "rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                "rounded-full px-1.5 py-0.5 text-caption font-medium",
                 source === "index" && "bg-[var(--ok-tint)] text-ok",
                 source === "carved" && "bg-[var(--recovered-tint)] text-recovered",
                 source === "inferred" && "bg-[color-mix(in_oklab,var(--inferred)_14%,transparent)] text-inferred",
@@ -108,7 +108,7 @@ export function VideoTile({ channel, mapping, playheadUs, leader, videoRef }: Vi
               {SOURCE_LABEL[source]}
             </span>
           )}
-          <span className="font-mono text-[11px] tabular-nums text-text-2">{formatTimecode(usToIso(playheadUs))}</span>
+          <span className="font-data text-caption tabular-nums text-text-2">{formatTimecode(usToIso(playheadUs))}</span>
         </div>
       </div>
     </div>

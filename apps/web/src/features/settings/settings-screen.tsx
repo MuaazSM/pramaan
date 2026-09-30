@@ -31,8 +31,8 @@ export function SettingsScreen() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 p-6">
       <div>
-        <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">Settings</h1>
-        <p className="text-[13px] text-text-2">System health, LLM budget, roles and signing keys for this deployment.</p>
+        <h1 className="text-page-title text-text">Settings</h1>
+        <p className="mt-1 text-base text-text-2">System health, LLM budget, roles and signing keys for this deployment.</p>
       </div>
       <HealthPanel />
       <LlmPanel />
@@ -73,10 +73,10 @@ function PanelHeader({
           <Icon size={16} strokeWidth={1.75} className="text-text-2" />
         </span>
         <div>
-          <h2 id={id} className="text-[14px] font-semibold text-text">
+          <h2 id={id} className="text-section text-text">
             {title}
           </h2>
-          <p className="text-xs text-text-2">{description}</p>
+          <p className="text-sm text-text-2">{description}</p>
         </div>
       </div>
       {badge}
@@ -117,7 +117,7 @@ function HealthPanel() {
       ) : isError || !health ? (
         <QueryErrorState error={healthQuery.error} subject="system health" onRetry={() => void healthQuery.refetch()} className="py-6" />
       ) : (
-        <dl className="rounded-[var(--radius-card)] border border-line bg-card px-4 text-xs">
+        <dl className="rounded-[var(--radius-card)] border border-line bg-card px-4 text-sm">
           {rows.map(([label, value]) => (
             <div key={label} className="grid grid-cols-2 items-center border-b border-line py-2 last:border-0">
               <dt className="text-text-2">{label}</dt>
@@ -128,7 +128,7 @@ function HealthPanel() {
                     {value ? "on" : "off"}
                   </span>
                 ) : (
-                  <span className="font-mono text-text">{value}</span>
+                  <span className="font-data text-text">{value}</span>
                 )}
               </dd>
             </div>
@@ -176,11 +176,11 @@ function LlmPanel() {
         badge={health ? <Badge variant={enabled ? "ai" : "neutral"}>LLM: {enabled ? "on" : "off"}</Badge> : undefined}
       />
 
-      <dl className="mb-4 rounded-[var(--radius-card)] border border-line bg-card px-4 text-xs">
+      <dl className="mb-4 rounded-[var(--radius-card)] border border-line bg-card px-4 text-sm">
         <div className="grid grid-cols-2 items-center border-b border-line py-2">
           <dt className="text-text-2">Provider</dt>
           <dd className="text-right text-text-2">
-            configured server-side via <span className="font-mono text-text">PRAMAAN_LLM_PROVIDER</span>
+            configured server-side via <span className="font-data text-text">PRAMAAN_LLM_PROVIDER</span>
           </dd>
         </div>
         <div className="grid grid-cols-2 items-center py-2">
@@ -192,11 +192,11 @@ function LlmPanel() {
       </dl>
 
       <div className={cn(!enabled && "opacity-60")} data-testid="budget-meter" data-inactive={!enabled}>
-        <div className="mb-1 flex items-baseline justify-between text-xs">
+        <div className="mb-1 flex items-baseline justify-between text-label">
           <span className="text-text-2">
-            Total spend{!enabled && <span className="text-text-3"> · meter inactive (LLM off)</span>}
+            Total spend{!enabled && <span className="text-text-3"> (meter inactive, LLM off)</span>}
           </span>
-          <span className="font-mono tabular-nums text-text">
+          <span className="font-data tabular-nums text-text">
             <span data-testid="budget-spent">{usage.isLoading ? "…" : usd(total)}</span>
             <span className="text-text-3"> / {usd(DEFAULT_CAP_TOTAL_USD)} default cap</span>
           </span>
@@ -213,24 +213,24 @@ function LlmPanel() {
         >
           <div className={cn("h-full rounded-full", pct >= 80 ? "bg-warn" : "bg-accent")} style={{ width: `${pct}%` }} />
         </div>
-        <p className="mt-2 text-[11px] text-text-3">
-          Caps are the documented defaults (<span className="font-mono">llm.budget_usd_total</span> ={" "}
-          {DEFAULT_CAP_TOTAL_USD}, <span className="font-mono">llm.budget_usd_per_case</span> = {DEFAULT_CAP_PER_CASE_USD}), not
+        <p className="mt-2 text-caption text-text-3">
+          Caps are the documented defaults (<span className="font-data">llm.budget_usd_total</span> ={" "}
+          {DEFAULT_CAP_TOTAL_USD}, <span className="font-data">llm.budget_usd_per_case</span> = {DEFAULT_CAP_PER_CASE_USD}), not
           live-fetched — no endpoint exposes the configured values. Usage rows carry no case id, so spend against the{" "}
           {usd(DEFAULT_CAP_PER_CASE_USD)} per-case cap cannot be shown here; the server enforces both caps.
         </p>
       </div>
 
       <div className="mt-4">
-        <h3 className="mb-1.5 text-[11px] uppercase tracking-wide text-text-3">Usage ({rows.length} calls)</h3>
+        <h3 className="mb-1.5 text-label text-text-3">Usage ({rows.length} calls)</h3>
         {usage.isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : usage.isError ? (
-          <p role="alert" className="text-xs text-danger">
+          <p role="alert" className="text-sm text-danger">
             Could not load LLM usage.
           </p>
         ) : rows.length === 0 ? (
-          <p className="rounded-[var(--radius-card)] border border-dashed border-line-strong py-5 text-center text-xs text-text-2">
+          <p className="rounded-[var(--radius-card)] border border-dashed border-line-strong py-5 text-center text-sm text-text-2">
             No LLM calls recorded.
           </p>
         ) : (
@@ -246,12 +246,12 @@ function LlmPanel() {
             <TableBody>
               {rows.map((r) => (
                 <TableRow key={r.id}>
-                  <TableCell className="font-mono text-[11px] text-text">{r.model}</TableCell>
-                  <TableCell className="font-mono tabular-nums text-text-2">
+                  <TableCell className="font-data text-sm text-text">{r.model}</TableCell>
+                  <TableCell className="font-data tabular-nums text-text-2">
                     {r.input_tokens.toLocaleString()} / {r.output_tokens.toLocaleString()}
                   </TableCell>
-                  <TableCell className="font-mono tabular-nums text-text-2">${r.cost_usd.toFixed(4)}</TableCell>
-                  <TableCell className="font-mono tabular-nums text-text-3">{formatTimecode(r.created_utc)}</TableCell>
+                  <TableCell className="font-data tabular-nums text-text-2">${r.cost_usd.toFixed(4)}</TableCell>
+                  <TableCell className="font-data tabular-nums text-text-3">{formatTimecode(r.created_utc)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -303,14 +303,14 @@ function UsersPanel() {
         <TableBody>
           {ROLES.map((r) => (
             <TableRow key={r.role}>
-              <TableCell className="font-mono text-[12px] text-text">{r.role}</TableCell>
+              <TableCell className="font-data text-sm text-text">{r.role}</TableCell>
               <TableCell className="text-text-2">{r.can}</TableCell>
               <TableCell className="text-text-3">{r.cannot}</TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-      <p className="mt-3 text-[11px] text-text-3">
+      <p className="mt-3 text-caption text-text-3">
         Not yet backed by a management endpoint: users cannot be invited, edited or removed from the UI. Role rules per
         docs/02-BACKEND.md §11 (“reviewers cannot run scans; only admins manage users”); anchor creation is restricted to
         examiners and admins by the API.
@@ -328,7 +328,7 @@ function KeysPanel() {
       label: "Examiner keys",
       value: (
         <>
-          One <span className="font-mono">Ed25519</span> key per examiner; signs the <span className="font-mono">entry_hash</span> of
+          One <span className="font-data">Ed25519</span> key per examiner; signs the <span className="font-data">entry_hash</span> of
           every custody entry that examiner causes.
         </>
       ),
@@ -337,7 +337,7 @@ function KeysPanel() {
       label: "Lab key",
       value: (
         <>
-          One <span className="font-mono">Ed25519</span> lab key; signs anchors (<span className="font-mono">lab_signature</span>) and
+          One <span className="font-data">Ed25519</span> lab key; signs anchors (<span className="font-data">lab_signature</span>) and
           reports.
         </>
       ),
@@ -360,7 +360,7 @@ function KeysPanel() {
         description="How custody entries and anchors are signed. Reference only."
         badge={<Badge variant="neutral">read-only</Badge>}
       />
-      <dl className="rounded-[var(--radius-card)] border border-line bg-card px-4 text-xs">
+      <dl className="rounded-[var(--radius-card)] border border-line bg-card px-4 text-sm">
         {items.map((it) => (
           <div key={it.label} className="grid grid-cols-[9rem_1fr] gap-3 border-b border-line py-2 last:border-0">
             <dt className="text-text-2">{it.label}</dt>
@@ -368,7 +368,7 @@ function KeysPanel() {
           </div>
         ))}
       </dl>
-      <p className="mt-3 text-[11px] text-text-3">
+      <p className="mt-3 text-caption text-text-3">
         Describes the design in docs/02-BACKEND.md §8 — no key-management endpoint exists, so keys cannot be listed, rotated or
         exported here.
       </p>

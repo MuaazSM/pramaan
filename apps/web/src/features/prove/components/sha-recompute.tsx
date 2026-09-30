@@ -83,14 +83,15 @@ export function ShaRecompute({
     >
       <StateGlyph state={state} />
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium text-text">
+        <p className="text-base font-medium text-text">
           {state === "computing" && "Recomputing SHA-256 from bytes on disk…"}
           {state === "verified" && "Verified — recomputed hash matches the stored claim"}
           {state === "mismatch" && "Mismatch — recomputed hash does not match the stored claim"}
           {state === "unavailable" && "Recompute unavailable in this browser context"}
         </p>
-        <p className="mt-0.5 truncate font-mono text-[11px] text-text-2">
-          {recomputed ? `sha256 ${shortHash(recomputed)} · stored ${shortHash(storedHash)}` : `stored ${shortHash(storedHash)}`}
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-3 truncate font-data text-caption text-text-2">
+          {recomputed && <span>sha256 {shortHash(recomputed)}</span>}
+          <span>stored {shortHash(storedHash)}</span>
         </p>
       </div>
       {recomputed && (

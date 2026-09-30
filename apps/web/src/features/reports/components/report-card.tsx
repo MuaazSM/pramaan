@@ -24,14 +24,13 @@ export function ReportCard({ report, latest }: { report: ReportRecord; latest: b
             <FileText size={16} strokeWidth={1.75} className="text-text-2" />
           </span>
           <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-[14px] font-semibold text-text">
-              <span className="font-mono tabular-nums">{report.id}</span>
+            <h2 className="flex items-center gap-2 text-section text-text">
+              <span className="font-data tabular-nums">{report.id}</span>
               {latest && <Badge variant="brand">latest</Badge>}
             </h2>
-            <p className="mt-0.5 text-[12px] text-text-2">
-              {report.examiner}
-              <span className="text-text-3">{" · "}</span>
-              <span className="font-mono tabular-nums">{formatTimecode(report.created_utc)}</span>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-text-2">
+              <span>{report.examiner}</span>
+              <span className="font-data tabular-nums">{formatTimecode(report.created_utc)}</span>
             </p>
           </div>
         </div>

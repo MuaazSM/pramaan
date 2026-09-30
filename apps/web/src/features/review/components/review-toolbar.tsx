@@ -15,7 +15,7 @@ const LAYOUTS: { value: GridLayout; icon: typeof Square; label: string }[] = [
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="rounded border border-line-strong bg-control px-1 py-0.5 font-mono text-[10px] leading-none text-text-2">
+    <kbd className="rounded border border-line-strong bg-control px-1 py-0.5 font-data text-caption leading-none text-text-2">
       {children}
     </kbd>
   );
@@ -126,7 +126,7 @@ export function ReviewToolbar({
           </TooltipContent>
         </Tooltip>
         {playing && rate !== 0 && (
-          <span className="font-mono text-[11px] tabular-nums text-text-2">{Math.abs(rate)}x</span>
+          <span className="font-data text-caption tabular-nums text-text-2">{Math.abs(rate)}x</span>
         )}
       </div>
 
@@ -140,7 +140,7 @@ export function ReviewToolbar({
             onClick={() => toggleChannel(ch)}
             aria-pressed={activeChannels.includes(ch)}
             className={cn(
-              "focus-ring rounded-full border px-2 py-0.5 text-[11px] font-medium",
+              "focus-ring rounded-full border px-2 py-0.5 font-data text-caption",
               activeChannels.includes(ch)
                 ? "border-line-strong bg-control text-text"
                 : "border-line bg-transparent text-text-3 hover:text-text-2",
@@ -156,7 +156,7 @@ export function ReviewToolbar({
           <button
             type="button"
             onClick={() => setRangeSelection(null)}
-            className="focus-ring flex items-center gap-1 rounded-full border border-[color-mix(in_oklab,var(--brand-500)_40%,transparent)] bg-[var(--selected)] px-2 py-0.5 text-[11px] font-medium text-accent-text"
+            className="focus-ring flex items-center gap-1 rounded-full border border-[color-mix(in_oklab,var(--brand-500)_40%,transparent)] bg-[var(--selected)] px-2 py-0.5 text-caption text-accent-text"
           >
             Range selected
             <X size={11} strokeWidth={1.75} />
@@ -176,7 +176,7 @@ export function ReviewToolbar({
             placeholder="14:02:37"
             aria-label="Go to timecode"
             aria-invalid={goToError}
-            className={cn("h-7 w-32 font-mono text-xs", goToError && "border-danger")}
+            className={cn("h-7 w-32 font-data text-sm", goToError && "border-danger")}
           />
           <Tooltip>
             <TooltipTrigger asChild>

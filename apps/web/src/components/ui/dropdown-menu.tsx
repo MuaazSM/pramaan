@@ -30,7 +30,7 @@ export function DropdownMenuItem({ className, ...props }: DropdownPrimitive.Drop
   return (
     <DropdownPrimitive.Item
       className={cn(
-        "focus-ring flex cursor-pointer items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5 text-[13px] text-text outline-none",
+        "focus-ring flex cursor-pointer items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5 text-base text-text outline-none",
         "data-[highlighted]:bg-control data-[disabled]:opacity-40 [&_svg]:size-4",
         className,
       )}
@@ -49,7 +49,7 @@ export function DropdownMenuCheckboxItem({
     <DropdownPrimitive.CheckboxItem
       checked={checked}
       className={cn(
-        "focus-ring relative flex cursor-pointer items-center gap-2 rounded-[var(--radius-control)] py-1.5 pl-7 pr-2 text-[13px] text-text outline-none data-[highlighted]:bg-control",
+        "focus-ring relative flex cursor-pointer items-center gap-2 rounded-[var(--radius-control)] py-1.5 pl-7 pr-2 text-base text-text outline-none data-[highlighted]:bg-control",
         className,
       )}
       {...props}
@@ -65,7 +65,7 @@ export function DropdownMenuCheckboxItem({
 }
 
 export function DropdownMenuLabel({ className, ...props }: DropdownPrimitive.DropdownMenuLabelProps) {
-  return <DropdownPrimitive.Label className={cn("px-2 py-1 text-[11px] font-medium text-text-2", className)} {...props} />;
+  return <DropdownPrimitive.Label className={cn("px-2 py-1 text-caption text-text-2", className)} {...props} />;
 }
 
 export function DropdownMenuSeparator({ className, ...props }: DropdownPrimitive.DropdownMenuSeparatorProps) {
@@ -73,7 +73,7 @@ export function DropdownMenuSeparator({ className, ...props }: DropdownPrimitive
 }
 
 export function DropdownMenuShortcut({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
-  return <span className={cn("ml-auto font-mono text-[11px] text-text-2", className)} {...props} />;
+  return <span className={cn("ml-auto font-data text-caption text-text-2", className)} {...props} />;
 }
 
 export { ChevronRight as DropdownMenuSubTriggerIcon };

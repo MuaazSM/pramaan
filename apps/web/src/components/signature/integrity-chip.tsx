@@ -42,7 +42,7 @@ export function IntegrityChip({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-control px-2 py-1 text-xs",
+        "inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-control px-2 py-1 text-label",
         className,
       )}
       title={hash}
@@ -51,8 +51,10 @@ export function IntegrityChip({
         <Icon size={9} strokeWidth={2.5} className="text-[var(--ink-950)]" />
       </span>
       <span className={cn("font-medium", colorClass)}>{label}</span>
-      <span className="text-text-2">·</span>
-      <span className="font-mono text-text-2">
+      {/* F6: no dot here — BRAND.md §8's own example (`[● verified] sha256 a41f09c2…9e1d`) joins
+          label and hash with a space, not a middle dot; the dot had spread in from other
+          components by habit. */}
+      <span className="font-data text-text-2">
         {algo} {shortHash(hash)}
       </span>
       <button

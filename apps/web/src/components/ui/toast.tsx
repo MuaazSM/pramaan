@@ -41,10 +41,10 @@ export const Toast = React.forwardRef<
 Toast.displayName = "Toast";
 
 export function ToastTitle({ className, ...props }: ToastPrimitive.ToastTitleProps) {
-  return <ToastPrimitive.Title className={cn("text-[13px] font-medium text-text", className)} {...props} />;
+  return <ToastPrimitive.Title className={cn("text-base font-medium text-text", className)} {...props} />;
 }
 export function ToastDescription({ className, ...props }: ToastPrimitive.ToastDescriptionProps) {
-  return <ToastPrimitive.Description className={cn("text-xs text-text-2", className)} {...props} />;
+  return <ToastPrimitive.Description className={cn("text-sm text-text-2", className)} {...props} />;
 }
 export function ToastClose({ className, ...props }: ToastPrimitive.ToastCloseProps) {
   return (

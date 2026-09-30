@@ -29,7 +29,7 @@ export function ManifestView({ report }: { report: ReportRecord }) {
   }
   if (query.isError || !query.data) {
     return (
-      <div role="alert" className="flex items-center gap-2 rounded-[var(--radius-card)] border border-line bg-card p-3 text-[12px] text-text-2">
+      <div role="alert" className="flex items-center gap-2 rounded-[var(--radius-card)] border border-line bg-card p-3 text-sm text-text-2">
         <AlertTriangle size={14} strokeWidth={1.75} className="text-danger" />
         Couldn't load this report's manifest.
       </div>
@@ -40,33 +40,33 @@ export function ManifestView({ report }: { report: ReportRecord }) {
 
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-card p-4" data-testid="manifest-view">
-      <dl className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-1.5 text-[12px]">
+      <dl className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-1.5 text-sm">
         {summary.facts.map((f) => (
           <div key={f.label} className="col-span-2 grid grid-cols-subgrid items-baseline">
             <dt className="text-text-3">{f.label}</dt>
-            <dd className={f.mono ? "break-all font-mono tabular-nums text-text" : "text-text"}>{f.value}</dd>
+            <dd className={f.mono ? "break-all font-data tabular-nums text-text" : "text-text"}>{f.value}</dd>
           </div>
         ))}
       </dl>
 
       {summary.evidence.length > 0 && (
         <section>
-          <h4 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-3">Evidence hashes</h4>
+          <h4 className="mb-1.5 text-label text-text-3">Evidence hashes</h4>
           <ul className="flex flex-col divide-y divide-line rounded-[var(--radius-control)] border border-line">
             {summary.evidence.map((e) => (
-              <li key={e.id} className="flex flex-col gap-0.5 px-3 py-2 text-[12px]">
-                <span className="text-text">
-                  <span className="font-mono">{e.id}</span>
-                  {e.label && <span className="text-text-3">{` · ${e.label}`}</span>}
+              <li key={e.id} className="flex flex-col gap-0.5 px-3 py-2 text-sm">
+                <span className="flex flex-wrap items-baseline gap-x-1.5 text-text">
+                  <span className="font-data">{e.id}</span>
+                  {e.label && <span className="text-text-3">{e.label}</span>}
                 </span>
                 {e.sha256 && (
-                  <span className="break-all font-mono text-[11px] tabular-nums text-text-2">
+                  <span className="break-all font-data text-caption tabular-nums text-text-2">
                     <span className="text-text-3">sha256 </span>
                     {e.sha256}
                   </span>
                 )}
                 {e.md5 && (
-                  <span className="break-all font-mono text-[11px] tabular-nums text-text-2">
+                  <span className="break-all font-data text-caption tabular-nums text-text-2">
                     <span className="text-text-3">md5 </span>
                     {e.md5}
                   </span>
@@ -79,14 +79,14 @@ export function ManifestView({ report }: { report: ReportRecord }) {
 
       {summary.contents.length > 0 && (
         <section>
-          <h4 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-3">Also in the manifest</h4>
+          <h4 className="mb-1.5 text-label text-text-3">Also in the manifest</h4>
           <ul className="flex flex-wrap gap-1.5">
             {summary.contents.map((c) => (
               <li
                 key={c.key}
-                className="rounded-full border border-line-strong bg-control px-2 py-0.5 font-mono text-[11px] tabular-nums text-text-2"
+                className="rounded-full border border-line-strong bg-control px-2 py-0.5 font-data text-caption tabular-nums text-text-2"
               >
-                {c.key} · {c.count}
+                {c.key} ({c.count})
               </li>
             ))}
           </ul>
@@ -95,8 +95,8 @@ export function ManifestView({ report }: { report: ReportRecord }) {
 
       {summary.limitations.length > 0 && (
         <section>
-          <h4 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-3">Limitations</h4>
-          <ul className="flex list-disc flex-col gap-1 pl-4 text-[12px] text-text-2">
+          <h4 className="mb-1.5 text-label text-text-3">Limitations</h4>
+          <ul className="flex list-disc flex-col gap-1 pl-4 text-sm text-text-2">
             {summary.limitations.map((l, i) => (
               <li key={i}>{l}</li>
             ))}

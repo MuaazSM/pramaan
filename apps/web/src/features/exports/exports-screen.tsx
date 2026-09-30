@@ -25,8 +25,8 @@ export function ExportsScreen({ caseId }: { caseId: string }) {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
       <div>
-        <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">Exports</h1>
-        <p className="text-[13px] text-text-2">
+        <h1 className="text-page-title text-text">Exports</h1>
+        <p className="mt-1 text-base text-text-2">
           ONVIF-style signed export (not conformance-tested). Video is remuxed by stream copy with a signed manifest; the original is never re-encoded.
         </p>
       </div>
@@ -42,10 +42,10 @@ export function ExportsScreen({ caseId }: { caseId: string }) {
 
       <section className="flex flex-col gap-2" aria-labelledby="session-exports-heading">
         <div className="flex items-baseline justify-between">
-          <h2 id="session-exports-heading" className="text-[15px] font-semibold tracking-[-0.01em] text-text">
+          <h2 id="session-exports-heading" className="text-section text-text">
             Exports created this session
           </h2>
-          <span className="text-[11px] text-text-3">Not a history — cleared when this browser tab closes.</span>
+          <span className="text-caption text-text-3">Not a history — cleared when this browser tab closes.</span>
         </div>
         <ExportsList records={exports} />
       </section>

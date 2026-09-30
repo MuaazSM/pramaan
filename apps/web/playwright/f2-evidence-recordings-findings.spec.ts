@@ -26,7 +26,7 @@ test.describe("F2 mock e2e", () => {
     // Identification panel — ranked vendor match with OEM lineage, honesty-copy wording.
     await expect(page.getByText("HIKSIM · synthetic, Hikvision-style layout")).toBeVisible();
     await expect(page.getByText(/Hikvision-compatible/)).toHaveCount(0);
-    await expect(page.getByText("OEM lineage", { exact: false })).toBeVisible();
+    await expect(page.getByText("Sold as:", { exact: false })).toBeVisible();
 
     // Scan pipeline — starts "done" from the seeded job; clicking Run scan starts a fresh one that
     // streams over the mock WS (src/mocks/ws-handlers.ts) through to "done" again.
@@ -48,7 +48,7 @@ test.describe("F2 mock e2e", () => {
     await page.goto(`/cases/${CASE_ID}/evidence/${TIER_B_EVIDENCE_ID}`);
 
     await expect(page.getByText("Inferred layout")).toBeVisible();
-    await expect(page.getByText("Tier B · structure inferred, not vendor-confirmed")).toBeVisible();
+    await expect(page.getByText("structure inferred, not vendor-confirmed")).toBeVisible();
     await expect(page.getByRole("cell", { name: "magic" })).toBeVisible();
 
     await page.getByRole("button", { name: "Confirm layout" }).click();
@@ -78,7 +78,7 @@ test.describe("F2 mock e2e", () => {
     await login(page);
     await page.goto(`/cases/${CASE_ID}/findings`);
 
-    await expect(page.getByText("Format deletion · CH3")).toBeVisible();
+    await expect(page.getByText("Format deletion on channel 3")).toBeVisible();
     await expect(page.getByText("admin", { exact: true })).toBeVisible();
     await expect(page.getByText("214")).toBeVisible();
     await expect(page.getByText(/hdd_format log event/)).toBeVisible();

@@ -73,7 +73,7 @@ export function Sidebar({ caseId }: { caseId?: string }) {
             <rect x="10" y="18.4" width="4" height="1.6" fill="var(--brand-400)" />
             <circle cx="22" cy="20" r="1.6" fill="var(--ok)" />
           </svg>
-          {!collapsed && <span className="truncate text-[14px] font-semibold tracking-[-0.02em] text-text">pramaan</span>}
+          {!collapsed && <span className="truncate text-md font-semibold tracking-[-0.02em] text-text">pramaan</span>}
         </Link>
       </div>
 
@@ -89,7 +89,7 @@ export function Sidebar({ caseId }: { caseId?: string }) {
                   <Link
                     to={to}
                     className={cn(
-                      "focus-ring flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-[13px] transition-colors duration-[var(--dur-fast)]",
+                      "focus-ring flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-base transition-colors duration-[var(--dur-fast)]",
                       active ? "bg-[var(--selected)] text-accent-text" : "text-text-2 hover:bg-control hover:text-text",
                     )}
                     title={collapsed ? item.label : undefined}
@@ -102,34 +102,34 @@ export function Sidebar({ caseId }: { caseId?: string }) {
             })}
           </ul>
         ) : (
-          !collapsed && <p className="px-2.5 py-1.5 text-xs text-text-2">Open a case to see its navigation.</p>
+          !collapsed && <p className="px-2.5 py-1.5 text-sm text-text-2">Open a case to see its navigation.</p>
         )}
       </nav>
 
       <div className="flex flex-col gap-0.5 border-t border-line p-2">
         <Link
           to="/settings"
-          className="focus-ring flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-[13px] text-text-2 hover:bg-control hover:text-text"
+          className="focus-ring flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-base text-text-2 hover:bg-control hover:text-text"
         >
           <Settings size={16} strokeWidth={1.5} />
           {!collapsed && <span>Settings</span>}
         </Link>
-        <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-text-2">
+        <div className="flex items-center gap-2 px-2.5 py-1.5 text-sm text-text-2">
           <CircleDot size={12} strokeWidth={2} className="text-ok" />
           {!collapsed && <span>System healthy</span>}
         </div>
         {user && (
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="focus-ring flex items-center gap-2 rounded-[var(--radius-control)] px-2.5 py-1.5 text-left text-[13px] text-text hover:bg-control"
+              className="focus-ring flex items-center gap-2 rounded-[var(--radius-control)] px-2.5 py-1.5 text-left text-base text-text hover:bg-control"
             >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--brand-900)] text-[11px] font-medium text-[var(--brand-300)]">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--brand-900)] text-caption font-medium text-[var(--brand-300)]">
                 {user.display_name.slice(0, 1)}
               </span>
               {!collapsed && (
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate">{user.display_name}</span>
-                  <span className="truncate text-[10px] text-text-2">{user.role}</span>
+                  <span className="truncate text-caption text-text-2">{user.role}</span>
                 </span>
               )}
             </DropdownMenuTrigger>
@@ -147,7 +147,7 @@ export function Sidebar({ caseId }: { caseId?: string }) {
           className="focus-ring mt-1 flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-text-2 hover:bg-control hover:text-text"
         >
           {collapsed ? <ChevronsRight size={16} strokeWidth={1.5} /> : <ChevronsLeft size={16} strokeWidth={1.5} />}
-          {!collapsed && <span className="text-xs">Collapse</span>}
+          {!collapsed && <span className="text-sm">Collapse</span>}
         </button>
       </div>
     </aside>

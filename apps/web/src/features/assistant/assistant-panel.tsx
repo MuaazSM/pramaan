@@ -71,7 +71,7 @@ export function AssistantPanel({ caseId, onClose, onBack }: { caseId: string; on
           </Button>
         )}
         <Sparkles size={15} strokeWidth={1.75} className="text-ai" />
-        <h2 className="text-[13px] font-semibold text-text">Ask about this case</h2>
+        <h2 className="text-section text-text">Ask about this case</h2>
       </div>
 
       <form onSubmit={submit} className="flex items-center gap-2 border-b border-line px-4 py-3">
@@ -102,7 +102,7 @@ export function AssistantPanel({ caseId, onClose, onBack }: { caseId: string; on
           />
         )}
         {!ask.isPending && !ask.isError && !outcome && (
-          <p className="text-[12px] text-text-2">
+          <p className="text-sm text-text-2">
             Describe what you are looking for. The assistant turns it into a filter you can review and edit — it
             never sees frames or disk bytes, and it does not draw conclusions.
           </p>
@@ -130,7 +130,7 @@ function Loading() {
 function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <div role="alert" className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-line-strong bg-control p-3">
-      <p className="text-[12px] text-text-2">The assistant couldn't answer that just now. Nothing was changed.</p>
+      <p className="text-sm text-text-2">The assistant couldn't answer that just now. Nothing was changed.</p>
       <Button variant="secondary" size="sm" onClick={onRetry}>
         Try again
       </Button>
@@ -144,8 +144,8 @@ function DisabledState() {
     <div data-testid="assistant-disabled" className="flex items-start gap-3 rounded-[var(--radius-card)] border border-line-strong bg-control p-3">
       <SearchX size={16} strokeWidth={1.5} className="mt-0.5 shrink-0 text-text-3" />
       <div>
-        <p className="text-[13px] font-medium text-text">AI assistant is not enabled</p>
-        <p className="mt-1 text-[12px] text-text-2">
+        <p className="text-base font-medium text-text">AI assistant is not enabled</p>
+        <p className="mt-1 text-sm text-text-2">
           This installation runs with the LLM feature switched off, so questions can't be turned into filters. All
           forensic analysis, search and reporting work without it. An administrator can enable it in the server
           configuration.
@@ -175,17 +175,19 @@ function Proposal({
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-[var(--radius-card)] border border-dashed border-[color-mix(in_oklab,var(--ai)_55%,transparent)] bg-[var(--ai-tint)] p-3">
-        <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-ai">
+        {/* Extends BRAND.md §8's exact "AI draft · needs examiner review" phrase family — dot kept
+            for consistency with the AIDraftBlock signature component. */}
+        <div className="mb-2 flex items-center gap-1.5 text-label font-medium text-ai">
           <WandSparkles size={13} strokeWidth={1.75} />
           AI draft {"·"} proposed filter, needs examiner review
         </div>
         {chips.length === 0 ? (
-          <p className="text-[12px] text-text-2">The assistant proposed no filter fields for that question.</p>
+          <p className="text-sm text-text-2">The assistant proposed no filter fields for that question.</p>
         ) : (
           <ChipRow chips={chips} filter={filter} onChange={onChange} />
         )}
         {edited && (
-          <p className="mt-2 text-[11px] text-text-3">
+          <p className="mt-2 text-caption text-text-3">
             Edited locally — edits are not re-run automatically.{" "}
             <button type="button" className="focus-ring text-accent-text underline-offset-2 hover:underline" onClick={() => onChange(original)}>
               Reset to proposal
@@ -195,21 +197,21 @@ function Proposal({
       </div>
 
       <div>
-        <p className="text-[12px] text-text-2" data-testid="assistant-result-count">
-          <span className="font-mono tabular-nums text-text">{resultCount}</span> {resultCount === 1 ? "result" : "results"} for
+        <p className="text-sm text-text-2" data-testid="assistant-result-count">
+          <span className="font-data tabular-nums text-text">{resultCount}</span> {resultCount === 1 ? "result" : "results"} for
           the proposed filter
         </p>
         {preview.length > 0 && (
           <ul className="mt-2 flex flex-col gap-1">
             {preview.map((row, i) => (
-              <li key={i} className="rounded-[var(--radius-control)] border border-line bg-control px-2.5 py-1.5 font-mono text-[11px] text-text-2">
+              <li key={i} className="rounded-[var(--radius-control)] border border-line bg-control px-2.5 py-1.5 font-data text-caption text-text-2">
                 {previewRow(row)
                   .map((kv) => `${kv.key}: ${kv.value}`)
                   .join(" · ") || "(no displayable fields)"}
               </li>
             ))}
             {results.length > preview.length && (
-              <li className="px-1 text-[11px] text-text-3">+ {results.length - preview.length} more not shown</li>
+              <li className="px-1 text-caption text-text-3">+ {results.length - preview.length} more not shown</li>
             )}
           </ul>
         )}
@@ -262,7 +264,7 @@ function ChipRow({
             key={chip.key}
             data-testid={`filter-chip-${chip.key}`}
             className={cn(
-              "inline-flex items-center overflow-hidden rounded-full border bg-panel text-[12px]",
+              "inline-flex items-center overflow-hidden rounded-full border bg-panel text-label",
               editing?.key === chip.key ? "border-[var(--ai)]" : "border-line-strong",
             )}
           >
@@ -274,7 +276,7 @@ function ChipRow({
               className="focus-ring flex items-center gap-1.5 py-1 pl-2.5 pr-1.5 hover:bg-control"
             >
               <span className="text-text-3">{chip.label}</span>
-              <span className="font-mono text-text">{chip.value}</span>
+              <span className="font-data text-text">{chip.value}</span>
             </button>
             <button
               type="button"
@@ -308,7 +310,7 @@ function ChipRow({
             </Button>
           </div>
           {error && (
-            <p role="alert" className="text-[11px] text-danger">
+            <p role="alert" className="text-caption text-danger">
               {error}
             </p>
           )}
@@ -327,7 +329,7 @@ function ChipEditor({ chip, draft, onDraft }: { chip: FilterChip; draft: string;
           {...common}
           value={draft}
           onChange={(e) => onDraft(e.target.value)}
-          className="focus-ring h-8 flex-1 rounded-[var(--radius-control)] border border-line-strong bg-control px-2 text-[13px] text-text"
+          className="focus-ring h-8 flex-1 rounded-[var(--radius-control)] border border-line-strong bg-control px-2 text-base text-text"
         >
           {chip.options?.map((o) => (
             <option key={o} value={o}>

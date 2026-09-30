@@ -171,8 +171,8 @@ export function TimelineCanvas({ channels, markers, className }: TimelineCanvasP
               aria-hidden
             />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-medium text-text">{ch.label}</div>
-              <div className="flex items-center gap-1 text-[10px] text-text-3">
+              <div className="truncate text-label font-medium text-text">{ch.label}</div>
+              <div className="flex items-center gap-1 text-caption text-text-3">
                 <span
                   className={cn("size-1.5 rounded-full", ch.clock.confidence >= 0.9 ? "bg-ok" : "bg-warn")}
                   aria-hidden

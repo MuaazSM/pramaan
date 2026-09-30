@@ -34,17 +34,17 @@ export function ClockStack({
               chosen ? "border border-[color-mix(in_oklab,var(--brand-500)_45%,transparent)] bg-[var(--selected)]" : "border border-transparent",
             )}
           >
-            <dt className="flex items-center gap-1.5 text-xs text-text-2">
+            <dt className="flex items-center gap-1.5 text-label text-text-2">
               {chosen && <span className="size-1.5 rounded-full bg-accent" aria-hidden />}
               {r.label}
             </dt>
             <dd className="flex items-center gap-2 tabular-nums">
-              <span className={cn("font-mono text-xs", chosen ? "text-text" : "text-text-2")}>
+              <span className={cn("font-data text-sm", chosen ? "text-text" : "text-text-2")}>
                 {r.iso ? formatTimecode(r.iso) : "—"}
               </span>
-              {r.offsetLabel && <span className="text-[10px] text-warn">{r.offsetLabel}</span>}
+              {r.offsetLabel && <span className="text-caption text-warn">{r.offsetLabel}</span>}
               {r.confidence != null && (
-                <span className="text-[10px] text-text-2">{Math.round(r.confidence * 100)}%</span>
+                <span className="text-caption text-text-2">{Math.round(r.confidence * 100)}%</span>
               )}
             </dd>
           </div>

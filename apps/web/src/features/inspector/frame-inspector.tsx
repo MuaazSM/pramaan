@@ -78,8 +78,8 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <SearchX size={20} strokeWidth={1.5} className="text-text-3" />
         <div>
-          <p className="text-[13px] font-medium text-text">Frame not found</p>
-          <p className="mt-1 text-[12px] text-text-2">frame_id {frameId} does not exist in this case.</p>
+          <p className="text-base font-medium text-text">Frame not found</p>
+          <p className="mt-1 text-sm text-text-2">frame_id <span className="font-data">{frameId}</span> does not exist in this case.</p>
         </div>
       </div>
     );
@@ -111,10 +111,10 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
             comment) in both themes, same convention as video-tile.tsx's "leader" badge — using
             theme-aware text here made these badges unreadable in light mode (caught in
             iteration 1's screenshots). */}
-        <span className="absolute left-1.5 top-1.5 rounded bg-[rgba(7,8,11,0.72)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink-100)]">
+        <span className="absolute left-1.5 top-1.5 rounded bg-[rgba(7,8,11,0.72)] px-1.5 py-0.5 font-data text-caption text-[var(--ink-100)]">
           CH{frame.channel ?? "—"}
         </span>
-        <span className="absolute right-1.5 top-1.5 rounded bg-[rgba(7,8,11,0.72)] px-1.5 py-0.5 font-mono text-[10px] uppercase text-[var(--ink-300)]">
+        <span className="absolute right-1.5 top-1.5 rounded bg-[rgba(7,8,11,0.72)] px-1.5 py-0.5 font-data text-caption text-[var(--ink-300)]">
           {frame.frame_type}
         </span>
       </div>
@@ -124,7 +124,7 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
       {/* Metadata */}
       <section>
         <SectionHeading icon={FileText} label="Frame" />
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
           <Field label="Frame ID" value={shortHash(frame.frame_id, 10, 6)} mono title={frame.frame_id} />
           <Field label="Codec" value={frame.codec.toUpperCase()} mono />
           <Field label="Type" value={frame.frame_type} mono />
@@ -155,7 +155,7 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
             hash={hexQuery.data.payload_sha256_stored}
           />
         ) : (
-          <p className="text-[11px] text-text-3">Payload hash not available.</p>
+          <p className="text-caption text-text-3">Payload hash not available.</p>
         )}
       </section>
 
@@ -165,7 +165,7 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
         {evidenceQuery.isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : evidenceQuery.data ? (
-          <dl className="grid grid-cols-1 gap-1.5 text-xs">
+          <dl className="grid grid-cols-1 gap-1.5">
             <Field label="Evidence image" value={evidenceQuery.data.id} mono />
             <Field label="Image SHA-256" value={shortHash(evidenceQuery.data.sha256)} mono title={evidenceQuery.data.sha256} />
             <Field label="Acquired" value={formatTimecode(evidenceQuery.data.acquired_utc)} mono />
@@ -175,11 +175,11 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
               mono
             />
             {recordingQuery.data && (
-              <Field label="Recording" value={`${recordingQuery.data.id} · ${recordingQuery.data.source}`} mono />
+              <Field label="Recording" value={`${recordingQuery.data.id} (${recordingQuery.data.source})`} mono />
             )}
           </dl>
         ) : (
-          <p className="text-[11px] text-text-3">Evidence record unavailable.</p>
+          <p className="text-caption text-text-3">Evidence record unavailable.</p>
         )}
       </section>
 
@@ -214,7 +214,7 @@ function SectionHeading({ icon: Icon, label }: { icon: typeof Binary; label: str
   return (
     <div className="mb-1.5 flex items-center gap-1.5">
       <Icon size={12} strokeWidth={1.75} className="text-text-3" />
-      <h3 className="text-[11px] font-medium uppercase tracking-wide text-text-3">{label}</h3>
+      <h3 className="text-label text-text-3">{label}</h3>
     </div>
   );
 }
@@ -222,8 +222,8 @@ function SectionHeading({ icon: Icon, label }: { icon: typeof Binary; label: str
 function Field({ label, value, mono, title }: { label: string; value: string; mono?: boolean; title?: string }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[10px] uppercase tracking-wide text-text-3">{label}</dt>
-      <dd className={mono ? "truncate font-mono text-text" : "truncate text-text"} title={title}>
+      <dt className="text-label text-text-3">{label}</dt>
+      <dd className={mono ? "truncate font-data text-sm text-text" : "truncate text-sm text-text"} title={title}>
         {value}
       </dd>
     </div>

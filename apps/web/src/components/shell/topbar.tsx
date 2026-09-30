@@ -23,11 +23,11 @@ export function TopBar({ segments, runningJob }: { segments: LineageSegment[]; r
       <button
         type="button"
         onClick={() => setCommandPaletteOpen(true)}
-        className="focus-ring flex h-7 items-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-control px-2.5 text-xs text-text-2 hover:text-text"
+        className="focus-ring flex h-7 items-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-control px-2.5 text-sm text-text-2 hover:text-text"
       >
         <Search size={13} strokeWidth={1.75} className="text-text-3" />
         Search
-        <kbd className="ml-2 rounded border border-line-strong bg-panel px-1 font-mono text-[10px] text-text-2">
+        <kbd className="ml-2 rounded border border-line-strong bg-panel px-1 font-data text-caption text-text-2">
           {"⌘"}K
         </kbd>
       </button>
@@ -36,10 +36,10 @@ export function TopBar({ segments, runningJob }: { segments: LineageSegment[]; r
         <button
           type="button"
           onClick={() => setJobDrawerOpen(true)}
-          className="focus-ring flex h-7 items-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-control px-2.5 text-xs text-warn hover:brightness-110"
+          className="focus-ring flex h-7 items-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-control px-2.5 text-sm text-warn hover:brightness-110"
         >
           <LoaderCircle size={13} strokeWidth={2} className="animate-spin" />
-          {runningJob.kind} {"·"} {Math.round(runningJob.pct)}%
+          {runningJob.kind} {Math.round(runningJob.pct)}%
         </button>
       )}
 
@@ -69,7 +69,7 @@ export function TopBar({ segments, runningJob }: { segments: LineageSegment[]; r
           </button>
         </TooltipTrigger>
         <TooltipContent>
-          Keyboard shortcuts <kbd className="ml-1 rounded border border-line-strong bg-panel px-1 font-mono text-[10px]">?</kbd>
+          Keyboard shortcuts <kbd className="ml-1 rounded border border-line-strong bg-panel px-1 font-data text-caption">?</kbd>
         </TooltipContent>
       </Tooltip>
 

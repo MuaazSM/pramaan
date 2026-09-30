@@ -70,8 +70,8 @@ export function VerifyZone() {
   return (
     <div className="flex flex-col gap-4" data-testid="verify-zone">
       <div>
-        <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-text">Verify an export</h2>
-        <p className="mt-0.5 text-[12px] text-text-2">
+        <h2 className="text-section text-text">Verify an export</h2>
+        <p className="mt-0.5 text-sm text-text-2">
           Drop an exported MP4 to check its signature and whether its source image is registered here.
         </p>
       </div>
@@ -112,18 +112,18 @@ export function VerifyZone() {
         {file ? <FileCheck2 size={22} strokeWidth={1.5} className="text-accent-text" aria-hidden /> : <UploadCloud size={22} strokeWidth={1.5} className="text-text-3" aria-hidden />}
         {file ? (
           <>
-            <span className="max-w-full truncate font-mono text-[12px] text-text" data-testid="verify-file-name">
+            <span className="max-w-full truncate font-data text-sm text-text" data-testid="verify-file-name">
               {file.name}
             </span>
-            <span className="text-[11px] tabular-nums text-text-3">{formatBytes(file.size)} — click or drop to choose a different file</span>
+            <span className="font-data text-caption tabular-nums text-text-3">{formatBytes(file.size)} — click or drop to choose a different file</span>
           </>
         ) : (
           <>
-            <span className="text-[13px] font-medium text-text">Drop an export here, or click to choose</span>
-            <span className="text-[11px] text-text-3">One file. It is uploaded to the server for verification and is not stored.</span>
+            <span className="text-base font-medium text-text">Drop an export here, or click to choose</span>
+            <span className="text-caption text-text-3">One file. It is uploaded to the server for verification and is not stored.</span>
           </>
         )}
-        {extraIgnored && <span className="text-[11px] text-warn">Only the first file was used.</span>}
+        {extraIgnored && <span className="text-caption text-warn">Only the first file was used.</span>}
       </label>
 
       <div className="flex justify-end">
@@ -142,15 +142,15 @@ export function VerifyZone() {
         {verifyMutation.isPending && (
           <div className="flex items-center gap-3 rounded-[var(--radius-card)] border border-line bg-panel p-3">
             <Loader2 size={18} strokeWidth={1.75} className="shrink-0 animate-spin text-text-3" aria-hidden />
-            <p className="text-[13px] text-text-2">Checking signature and source hash…</p>
+            <p className="text-base text-text-2">Checking signature and source hash…</p>
           </div>
         )}
         {verifyMutation.isError && (
           <div role="alert" className="flex items-start gap-3 rounded-[var(--radius-card)] border border-line-strong bg-panel p-3">
             <ShieldQuestion size={18} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-3" aria-hidden />
             <div>
-              <p className="text-[13px] font-medium text-text">Verification could not be completed</p>
-              <p className="mt-0.5 text-[12px] text-text-2">
+              <p className="text-base font-medium text-text">Verification could not be completed</p>
+              <p className="mt-0.5 text-sm text-text-2">
                 {verifyMutation.error instanceof Error ? verifyMutation.error.message : "Unknown error."} This is not a verdict on the file — try again.
               </p>
             </div>
@@ -197,7 +197,7 @@ function VerifyResultPanel({ result, fileSha256 }: { result: VerifyResult; fileS
         ) : (
           <ShieldAlert size={18} strokeWidth={1.75} className={cn("shrink-0", tone === "danger" ? "text-danger" : "text-warn")} aria-hidden />
         )}
-        <p className="text-[13px] font-medium text-text">{headline}</p>
+        <p className="text-base font-medium text-text">{headline}</p>
       </div>
 
       <dl className="flex flex-col gap-2">
@@ -230,10 +230,10 @@ function VerifyResultPanel({ result, fileSha256 }: { result: VerifyResult; fileS
           )}
         </FactRow>
       </dl>
-      {fileSha256 && <p className="-mt-1 text-[11px] text-text-3">Signature chip hash is the SHA-256 of the file you uploaded, computed in your browser.</p>}
+      {fileSha256 && <p className="-mt-1 text-caption text-text-3">Signature chip hash is the SHA-256 of the file you uploaded, computed in your browser.</p>}
 
       {notes.length > 0 && (
-        <ul className="list-disc pl-5 text-[12px] text-text-2">
+        <ul className="list-disc pl-5 text-sm text-text-2">
           {notes.map((n) => (
             <li key={n}>{n}</li>
           ))}
@@ -249,10 +249,10 @@ function FactRow({ label, caption, testId, children }: { label: string; caption:
   return (
     <div data-testid={testId} className="flex flex-col gap-1 rounded-[var(--radius-control)] border border-line bg-panel px-2.5 py-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <dt className="text-[11px] font-medium uppercase tracking-wide text-text-3">{label}</dt>
+        <dt className="text-label text-text-3">{label}</dt>
         <dd className="min-w-0">{children}</dd>
       </div>
-      <p className="text-[11px] leading-snug text-text-2">{caption}</p>
+      <p className="text-caption text-text-2">{caption}</p>
     </div>
   );
 }
@@ -262,10 +262,10 @@ function ManifestRows({ manifest, untrusted }: { manifest: Record<string, unknow
   if (keys.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5">
-      <h3 className="text-[11px] font-medium uppercase tracking-wide text-text-3">
+      <h3 className="text-label text-text-3">
         Manifest{untrusted ? " (unauthenticated — signature invalid)" : ""}
       </h3>
-      <dl className="grid grid-cols-[minmax(0,10rem)_1fr] gap-x-3 gap-y-1.5 rounded-[var(--radius-control)] border border-line bg-panel p-2.5 text-[12px] max-sm:grid-cols-1">
+      <dl className="grid grid-cols-[minmax(0,10rem)_1fr] gap-x-3 gap-y-1.5 rounded-[var(--radius-control)] border border-line bg-panel p-2.5 text-sm max-sm:grid-cols-1">
         {keys.map((k) => (
           <ManifestRow key={k} name={k} value={manifest[k]} />
         ))}
@@ -277,7 +277,7 @@ function ManifestRows({ manifest, untrusted }: { manifest: Record<string, unknow
 function ManifestRow({ name, value }: { name: string; value: unknown }) {
   return (
     <>
-      <dt className="break-words font-mono text-text-3">{name}</dt>
+      <dt className="break-words font-data text-text-3">{name}</dt>
       <dd className="min-w-0 text-text">
         <ManifestValue value={value} />
       </dd>
@@ -288,18 +288,18 @@ function ManifestRow({ name, value }: { name: string; value: unknown }) {
 function ManifestValue({ value }: { value: unknown }) {
   if (value === null || value === undefined) return <span className="text-text-3">null</span>;
   if (typeof value === "string") {
-    return HASH_RE.test(value) ? <span className="break-all font-mono text-[11px]">{value}</span> : <span className="break-words">{value}</span>;
+    return HASH_RE.test(value) ? <span className="break-all font-data text-caption">{value}</span> : <span className="break-words">{value}</span>;
   }
-  if (typeof value === "number") return <span className="font-mono tabular-nums">{value.toLocaleString("en-US")}</span>;
-  if (typeof value === "boolean") return <span className="font-mono">{String(value)}</span>;
+  if (typeof value === "number") return <span className="font-data tabular-nums">{value.toLocaleString("en-US")}</span>;
+  if (typeof value === "boolean") return <span className="font-data">{String(value)}</span>;
   const json = JSON.stringify(value);
   if (Array.isArray(value) && json.length > 80) {
     return (
       <details>
         <summary className="cursor-pointer text-text-2">{value.length} entries</summary>
-        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-text-2">{JSON.stringify(value, null, 1)}</pre>
+        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all font-data text-caption text-text-2">{JSON.stringify(value, null, 1)}</pre>
       </details>
     );
   }
-  return <span className="break-all font-mono text-[11px]">{json}</span>;
+  return <span className="break-all font-data text-caption">{json}</span>;
 }

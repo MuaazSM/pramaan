@@ -138,13 +138,13 @@ function IntakeWizard() {
             {done ? <Check size={22} strokeWidth={2} className="text-ok" /> : <HardDrive size={22} strokeWidth={1.5} className="text-text-2" />}
           </div>
           <div>
-            <h1 className="text-[16px] font-semibold text-text">{done ? "Evidence registered and hashed" : "Hashing evidence…"}</h1>
-            <p className="mt-1 text-[13px] text-text-2">
+            <h1 className="text-lg font-semibold tracking-[-0.01em] text-text">{done ? "Evidence registered and hashed" : "Hashing evidence…"}</h1>
+            <p className="mt-1 text-base text-text-2">
               {done ? "SHA-256 and MD5 computed and stored with the case." : "Computing SHA-256 and MD5 in read-only mode. This does not touch the source bytes."}
             </p>
           </div>
           <Progress value={progress} className="w-full" />
-          <span className="tabular-nums font-mono text-xs text-text-3">{Math.round(progress)}%</span>
+          <span className="font-data text-sm tabular-nums text-text-3">{Math.round(progress)}%</span>
           {done && (
             <Button asChild>
               <Link to="/cases/$cid" params={{ cid }}>
@@ -169,8 +169,8 @@ function IntakeWizard() {
     >
       <div className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
         <div>
-          <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">Add evidence</h1>
-          <p className="text-[13px] text-text-2">Register a disk image against this case and establish its seizure clock.</p>
+          <h1 className="text-page-title text-text">Add evidence</h1>
+          <p className="mt-1 text-base text-text-2">Register a disk image against this case and establish its seizure clock.</p>
         </div>
 
         {/* Step rail */}
@@ -179,7 +179,7 @@ function IntakeWizard() {
             <li key={s} className="flex flex-1 items-center gap-2">
               <div
                 className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium tabular-nums",
+                  "flex size-6 shrink-0 items-center justify-center rounded-full border text-caption font-medium tabular-nums",
                   i < step
                     ? "border-[color-mix(in_oklab,var(--ok)_45%,transparent)] bg-[var(--ok-tint)] text-ok"
                     : i === step
@@ -189,7 +189,7 @@ function IntakeWizard() {
               >
                 {i < step ? <Check size={12} strokeWidth={2.5} /> : i + 1}
               </div>
-              <span className={cn("text-xs", i === step ? "font-medium text-text" : "text-text-3")}>{s}</span>
+              <span className={cn("text-label", i === step ? "font-medium text-text" : "text-text-3")}>{s}</span>
               {i < STEPS.length - 1 && <div className="h-px flex-1 bg-line-strong" />}
             </li>
           ))}
@@ -199,12 +199,12 @@ function IntakeWizard() {
           {step === 0 && (
             <div className="flex flex-col gap-3">
               <Label>Image path (evidence roots only)</Label>
-              <div className="flex items-center gap-2 text-xs text-text-3">
-                <span className="font-mono">{browsePath}</span>
+              <div className="flex items-center gap-2 text-sm text-text-3">
+                <span className="font-data">{browsePath}</span>
               </div>
               <div className="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-line">
                 {browseQuery.data?.length === 0 && (
-                  <p className="p-4 text-center text-xs text-text-3">Empty directory.</p>
+                  <p className="p-4 text-center text-sm text-text-3">Empty directory.</p>
                 )}
                 {browseQuery.data?.map((entry) => (
                   <button
@@ -212,7 +212,7 @@ function IntakeWizard() {
                     type="button"
                     onClick={() => (entry.is_dir ? setBrowsePath(entry.path) : setSelectedPath(entry.path))}
                     className={cn(
-                      "focus-ring flex items-center gap-2 border-b border-line px-3 py-2 text-left text-[13px] last:border-0 hover:bg-control",
+                      "focus-ring flex items-center gap-2 border-b border-line px-3 py-2 text-left text-base last:border-0 hover:bg-control",
                       selectedPath === entry.path && "bg-[var(--selected)]",
                     )}
                   >
@@ -222,7 +222,7 @@ function IntakeWizard() {
                       <FileIcon size={14} strokeWidth={1.5} className={entry.looks_like_image ? "text-accent-text" : "text-text-3"} />
                     )}
                     <span className="truncate text-text">{entry.name}</span>
-                    {entry.looks_like_image && <span className="ml-auto text-[10px] text-ok">image</span>}
+                    {entry.looks_like_image && <span className="ml-auto text-caption text-ok">image</span>}
                   </button>
                 ))}
               </div>
@@ -235,17 +235,17 @@ function IntakeWizard() {
 
           {step === 1 && (
             <div className="flex flex-col gap-4">
-              <p className="text-xs text-text-2">
+              <p className="text-sm text-text-2">
                 SWGDE seizure clock: record the DVR&apos;s displayed time against a trusted reference at the moment of seizure.
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="dvr-time">DVR displayed time</Label>
-                  <Input id="dvr-time" value={dvrTime} onChange={(e) => setDvrTime(e.target.value)} className="font-mono" />
+                  <Input id="dvr-time" value={dvrTime} onChange={(e) => setDvrTime(e.target.value)} className="font-data" />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="ref-time">Reference time</Label>
-                  <Input id="ref-time" value={refTime} onChange={(e) => setRefTime(e.target.value)} className="font-mono" />
+                  <Input id="ref-time" value={refTime} onChange={(e) => setRefTime(e.target.value)} className="font-data" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -259,9 +259,9 @@ function IntakeWizard() {
                 </div>
               </div>
               {offsetSeconds != null && (
-                <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-control px-3 py-2 text-xs">
+                <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-control px-3 py-2 text-sm">
                   <span className="text-text-2">Live offset</span>
-                  <span className="font-mono tabular-nums text-warn">
+                  <span className="font-data tabular-nums text-warn">
                     {offsetSeconds >= 0 ? "+" : ""}
                     {offsetSeconds}s device drift
                   </span>
@@ -272,7 +272,7 @@ function IntakeWizard() {
 
           {step === 2 && (
             <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-[color-mix(in_oklab,var(--ok)_35%,transparent)] bg-[var(--ok-tint)] px-3 py-2 text-xs text-ok">
+              <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-[color-mix(in_oklab,var(--ok)_35%,transparent)] bg-[var(--ok-tint)] px-3 py-2 text-sm text-ok">
                 <Lock size={13} strokeWidth={1.75} />
                 Image will be opened read-only. Pramaan never writes to evidence.
               </div>
@@ -287,15 +287,15 @@ function IntakeWizard() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
-                  className="focus-ring w-full rounded-[var(--radius-control)] border border-line-strong bg-control px-2.5 py-2 text-[13px] text-text placeholder:text-text-3"
+                  className="focus-ring w-full rounded-[var(--radius-control)] border border-line-strong bg-control px-2.5 py-2 text-base text-text placeholder:text-text-3"
                   placeholder="Chain-of-custody notes for this acquisition"
                 />
               </div>
-              <dl className="grid grid-cols-2 gap-2 rounded-[var(--radius-card)] border border-line bg-card p-3 text-xs">
+              <dl className="grid grid-cols-2 gap-2 rounded-[var(--radius-card)] border border-line bg-card p-3 text-sm">
                 <dt className="text-text-3">Path</dt>
-                <dd className="truncate text-right font-mono text-text-2">{selectedPath}</dd>
+                <dd className="truncate text-right font-data text-text-2">{selectedPath}</dd>
                 <dt className="text-text-3">Seizure offset</dt>
-                <dd className="text-right font-mono tabular-nums text-text-2">
+                <dd className="text-right font-data tabular-nums text-text-2">
                   {offsetSeconds != null ? `${offsetSeconds >= 0 ? "+" : ""}${offsetSeconds}s` : "—"}
                 </dd>
               </dl>

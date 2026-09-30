@@ -85,7 +85,7 @@ test.describe("F4 exports mock e2e", () => {
     await login(page);
     await page.goto(`/cases/${CASE_ID}/exports`);
     await page.getByRole("combobox", { name: "Recording" }).click();
-    await page.getByRole("option", { name: /CH1 · rec_001/ }).click();
+    await page.getByRole("option", { name: /CH1 rec_001/ }).click();
     // Channel/time are ignored (and disabled) for a whole-recording export.
     await expect(page.getByLabel("Channel", { exact: true })).toBeDisabled();
     await page.getByRole("button", { name: "Create signed export" }).click();

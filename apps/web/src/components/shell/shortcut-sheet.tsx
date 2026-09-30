@@ -44,16 +44,16 @@ export function ShortcutSheet() {
         <div className="flex max-h-[60vh] flex-col gap-5 overflow-y-auto pr-1">
           {SHORTCUT_GROUPS.map((group) => (
             <div key={group.title}>
-              <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-text-3">{group.title}</h3>
+              <h3 className="mb-2 text-caption text-text-3">{group.title}</h3>
               <ul className="flex flex-col gap-2">
                 {group.shortcuts.map((s) => (
-                  <li key={s.description} className="flex items-center justify-between gap-4 text-[13px]">
+                  <li key={s.description} className="flex items-center justify-between gap-4 text-base">
                     <span className="text-text-2">{s.description}</span>
                     <span className="flex shrink-0 items-center gap-1">
                       {s.keys.map((k, i) => (
                         <span key={i} className="flex items-center gap-1">
                           {i > 0 && <span className="text-text-3">+</span>}
-                          <kbd className="min-w-[1.5rem] rounded border border-line-strong bg-control px-1.5 py-0.5 text-center font-mono text-[11px] text-text">
+                          <kbd className="min-w-[1.5rem] rounded border border-line-strong bg-control px-1.5 py-0.5 text-center font-data text-caption text-text">
                             {k}
                           </kbd>
                         </span>

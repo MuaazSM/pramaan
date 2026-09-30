@@ -29,11 +29,11 @@ export function PlaceholderScreen({
           <Icon size={22} strokeWidth={1.5} className="text-text-3" />
         </div>
         <div className="max-w-md">
-          <h1 className="text-[16px] font-semibold text-text">{title}</h1>
-          <p className="mt-1.5 text-[13px] text-text-2">{description}</p>
+          <h1 className="text-page-title text-text">{title}</h1>
+          <p className="mt-1.5 text-base text-text-2">{description}</p>
         </div>
-        <span className="rounded-full border border-line-strong bg-control px-2.5 py-1 text-[11px] text-text-3">
-          Designed placeholder · built by {owner}
+        <span className="rounded-full border border-line-strong bg-control px-2.5 py-1 text-caption text-text-3">
+          Designed placeholder, built by {owner}
         </span>
       </div>
     </ScreenShell>

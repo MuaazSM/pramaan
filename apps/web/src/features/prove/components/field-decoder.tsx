@@ -53,13 +53,13 @@ export function FieldDecoder({
           )}
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-[12px] font-medium text-text">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-text">
               <span className="size-2 rounded-sm" style={{ backgroundColor: KIND_DOT[a.kind] }} aria-hidden />
               {KIND_LABEL[a.kind]}
             </span>
-            <span className="font-mono text-[10px] tabular-nums text-text-3">{a.length}B</span>
+            <span className="font-data text-caption tabular-nums text-text-3">{a.length}B</span>
           </div>
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10px] text-text-2">
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-data text-caption text-text-2">
             <Row label="Offset" value={`0x${a.absoluteStart.toString(16)} (${a.absoluteStart.toLocaleString()})`} />
             <Row label="Sector" value={`${sectorForOffset(a.absoluteStart)}`} />
           </dl>
@@ -75,7 +75,7 @@ function FieldDecode({ annotation, bytes, codec }: { annotation: HexAnnotation; 
     const raw = sliceAnnotation(bytes, annotation);
     const decoded = decodeStartCode(raw);
     return (
-      <p className={cn("mt-0.5 flex items-start gap-1 text-[11px]", decoded.isAnnexB ? "text-text" : "text-text-3")}>
+      <p className={cn("mt-0.5 flex items-start gap-1 text-sm", decoded.isAnnexB ? "text-text" : "text-text-3")}>
         <Info size={11} strokeWidth={1.75} className="mt-0.5 shrink-0" />
         {decoded.label}
       </p>
@@ -85,7 +85,7 @@ function FieldDecode({ annotation, bytes, codec }: { annotation: HexAnnotation; 
     const raw = sliceAnnotation(bytes, annotation);
     const nal = decodeNalHeader(raw, codec);
     return (
-      <p className="mt-0.5 flex items-start gap-1 text-[11px] text-text">
+      <p className="mt-0.5 flex items-start gap-1 text-sm text-text">
         <Info size={11} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-3" />
         {nal
           ? `First payload byte(s) (${nal.bytes}) decode as NAL unit type ${nal.nalUnitType} — ${nal.typeName}, per Annex-B convention.`
@@ -95,10 +95,10 @@ function FieldDecode({ annotation, bytes, codec }: { annotation: HexAnnotation; 
   }
   if (annotation.kind === "header") {
     return (
-      <p className="mt-0.5 flex items-start gap-1 text-[11px] text-text-3">
+      <p className="mt-0.5 flex items-start gap-1 text-sm text-text-3">
         <Info size={11} strokeWidth={1.75} className="mt-0.5 shrink-0" />
         {"Vendor-specific layout — offsets are known from the format parser; individual field semantics are not exposed by this endpoint. First bytes: "}
-        <span className="font-mono">{bytesToHex(sliceAnnotation(bytes, annotation).slice(0, 8))}</span>
+        <span className="font-data">{bytesToHex(sliceAnnotation(bytes, annotation).slice(0, 8))}</span>
       </p>
     );
   }

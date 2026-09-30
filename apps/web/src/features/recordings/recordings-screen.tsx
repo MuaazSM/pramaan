@@ -106,8 +106,8 @@ export function RecordingsScreen({ cid }: { cid: string }) {
     <div className="mx-auto flex max-w-6xl flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">Recordings</h1>
-          <p className="text-[13px] text-text-2">
+          <h1 className="text-page-title text-text">Recordings</h1>
+          <p className="mt-1 text-base text-text-2">
             {isLoading ? "Loading…" : `${filtered.length.toLocaleString()} of ${total.toLocaleString()} recordings`}
           </p>
         </div>
@@ -136,14 +136,14 @@ export function RecordingsScreen({ cid }: { cid: string }) {
           <Chip active={status === "active"} onClick={() => setStatus("active")}>Active</Chip>
           <Chip active={status === "recovered"} onClick={() => setStatus("recovered")}>Recovered</Chip>
         </ChipGroup>
-        <div className="flex items-center gap-1.5 text-xs text-text-2">
+        <div className="flex items-center gap-1.5 text-label text-text-2">
           <span className="text-text-3">Device time</span>
           <input
             type="datetime-local"
             value={fromLocal}
             onChange={(e) => setFromLocal(e.target.value)}
             aria-label="From device time"
-            className="focus-ring h-7 rounded-[var(--radius-control)] border border-line-strong bg-control px-2 font-mono text-[11px] text-text"
+            className="focus-ring h-7 rounded-[var(--radius-control)] border border-line-strong bg-control px-2 font-data text-caption text-text"
           />
           <span className="text-text-3">to</span>
           <input
@@ -151,7 +151,7 @@ export function RecordingsScreen({ cid }: { cid: string }) {
             value={toLocal}
             onChange={(e) => setToLocal(e.target.value)}
             aria-label="To device time"
-            className="focus-ring h-7 rounded-[var(--radius-control)] border border-line-strong bg-control px-2 font-mono text-[11px] text-text"
+            className="focus-ring h-7 rounded-[var(--radius-control)] border border-line-strong bg-control px-2 font-data text-caption text-text"
           />
         </div>
       </div>
@@ -168,7 +168,7 @@ export function RecordingsScreen({ cid }: { cid: string }) {
         <EmptyRecordings hasAny={total > 0} />
       ) : (
         <div ref={parentRef} className="overflow-auto rounded-[var(--radius-card)] border border-line" style={{ height: "min(64vh, 640px)" }}>
-          <table className="w-full caption-bottom text-[13px]">
+          <table className="w-full caption-bottom text-base">
             <TableHeader>
               <TableRow>
                 <TableHead>Channel</TableHead>
@@ -206,10 +206,10 @@ export function RecordingsScreen({ cid }: { cid: string }) {
                     <TableCell>
                       {r.deleted ? <Badge variant="recovered">recovered</Badge> : <Badge variant="ok">active</Badge>}
                     </TableCell>
-                    <TableCell className="font-mono tabular-nums text-text-2">
+                    <TableCell className="font-data tabular-nums text-text-2">
                       {r.start_ts_us != null ? formatTimecodeUs(r.start_ts_us) : "—"}
                     </TableCell>
-                    <TableCell className="font-mono tabular-nums">
+                    <TableCell className="font-data tabular-nums">
                       {r.start_ts_us != null ? formatTimecodeUs(normalise(r.start_ts_us, clock)) : "—"}
                     </TableCell>
                     <TableCell className="tabular-nums text-text-2">{formatDuration(durationS)}</TableCell>
@@ -241,7 +241,7 @@ export function RecordingsScreen({ cid }: { cid: string }) {
 function ChipGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-1 rounded-full border border-line-strong bg-card py-0.5 pl-2.5 pr-1">
-      <span className="text-[10px] uppercase tracking-wide text-text-3">{label}</span>
+      <span className="text-caption text-text-3">{label}</span>
       <div className="flex items-center gap-1">{children}</div>
     </div>
   );
@@ -253,7 +253,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       className={cn(
-        "focus-ring rounded-full border px-2 py-1 text-[11px] font-medium transition-colors duration-[var(--dur-fast)]",
+        "focus-ring rounded-full border px-2 py-1 text-caption font-medium transition-colors duration-[var(--dur-fast)]",
         active
           ? "border-[color-mix(in_oklab,var(--brand-500)_45%,transparent)] bg-[var(--selected)] text-accent-text"
           : "border-transparent text-text-2 hover:text-text",
@@ -268,7 +268,7 @@ function EmptyRecordings({ hasAny }: { hasAny: boolean }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-[var(--radius-panel)] border border-dashed border-line-strong py-16 text-center">
       <Video size={28} strokeWidth={1.5} className="text-text-3" />
-      <p className="text-[13px] text-text-2">{hasAny ? "No recordings match these filters." : "No recordings indexed yet — run a scan first."}</p>
+      <p className="text-base text-text-2">{hasAny ? "No recordings match these filters." : "No recordings indexed yet — run a scan first."}</p>
     </div>
   );
 }

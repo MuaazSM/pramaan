@@ -30,18 +30,20 @@ export function AIDraftBlock({
         className,
       )}
     >
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-ai">
+      {/* BRAND.md §8 writes this label with a dot ("AI draft · needs examiner review") — kept
+          verbatim, a fourth signature-component exception (docs/progress/F6.md). */}
+      <div className="mb-2 flex items-center gap-1.5 text-label font-medium text-ai">
         <Sparkles size={13} strokeWidth={1.75} />
         AI draft {"·"} needs examiner review
       </div>
-      <div className="flex flex-col gap-2 text-[13px] leading-relaxed text-text">
+      <div className="flex flex-col gap-2 text-base leading-relaxed text-text">
         {sentences.map((s, i) => (
           <p key={i}>
             {s.text}{" "}
             {s.evidenceIds.map((id) => (
               <span
                 key={id}
-                className="ml-1 inline-flex items-center rounded-full border border-line-strong bg-control px-1.5 py-0.5 font-mono text-[10px] text-text-2"
+                className="ml-1 inline-flex items-center rounded-full border border-line-strong bg-control px-1.5 py-0.5 font-data text-caption text-text-2"
               >
                 {id}
               </span>

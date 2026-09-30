@@ -51,8 +51,11 @@ function LoginScreen() {
             <circle cx="22" cy="20" r="1.6" fill="var(--ok)" />
           </svg>
           <div>
-            <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">pramaan</h1>
-            <p className="mt-1 text-[13px] text-text-2">Proof from any DVR.</p>
+            {/* Wordmark: BRAND.md §2 pins tracking at exactly -0.02em (not the page-title role's
+                -0.015em) — kept literal here since this is the one place the logo lockup itself
+                appears at type scale, not a generic heading. */}
+            <h1 className="text-xl font-semibold tracking-[-0.02em] text-text">pramaan</h1>
+            <p className="mt-1 text-base text-text-2">Proof from any DVR.</p>
           </div>
         </div>
 
@@ -87,7 +90,7 @@ function LoginScreen() {
           </div>
 
           {error && (
-            <p role="alert" className="rounded-[var(--radius-control)] border border-[color-mix(in_oklab,var(--danger)_40%,transparent)] bg-[var(--danger-tint)] px-2.5 py-2 text-xs text-danger">
+            <p role="alert" className="rounded-[var(--radius-control)] border border-[color-mix(in_oklab,var(--danger)_40%,transparent)] bg-[var(--danger-tint)] px-2.5 py-2 text-sm text-danger">
               {error}
             </p>
           )}
@@ -100,12 +103,12 @@ function LoginScreen() {
           {/* text-2, not text-3: text-3 (--ink-400) measures ~3.1-3.4:1 against these dark
               backgrounds — below WCAG AA's 4.5:1 for normal-size text (Lighthouse color-contrast,
               F5 fix). text-2 (--ink-300) measures ~6:1. */}
-          <p className="text-center text-[11px] text-text-2">
+          <p className="text-center text-caption text-text-2">
             Seeded accounts: examiner/demo, reviewer/demo, admin/demo
           </p>
         </form>
 
-        <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-text-2">
+        <div className="mt-4 flex items-center justify-center gap-1.5 text-caption text-text-2">
           <WifiOff size={12} strokeWidth={1.75} />
           Works offline once installed — evidence never leaves this workstation.
         </div>

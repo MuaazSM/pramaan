@@ -99,20 +99,24 @@ function CaseOverviewScreen() {
       caseId={cid}
       showCustodySeal
     >
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 p-6">
         {caseQuery.isLoading || !c ? (
           <Skeleton className="h-20 w-full" />
         ) : (
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">{c.title}</h1>
+                <h1 className="text-page-title text-text">{c.title}</h1>
                 <Badge variant={c.status === "open" ? "ok" : "neutral"} className="capitalize">
                   {c.status}
                 </Badge>
               </div>
-              <p className="mt-1 font-mono text-[12px] text-text-2">
-                {c.case_number} {c.fir_reference ? `· ${c.fir_reference}` : ""} {c.lab ? `· ${c.lab}` : ""}
+              {/* F6: case number/FIR/lab are each their own datum, not a dot-joined sentence —
+                  case_number and fir_reference are IDs (mono), lab is a plain name (sans). */}
+              <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-label text-text-2">
+                <span className="font-data">{c.case_number}</span>
+                {c.fir_reference && <span className="font-data">{c.fir_reference}</span>}
+                {c.lab && <span>{c.lab}</span>}
               </p>
             </div>
             <div className="flex gap-2">
@@ -138,7 +142,7 @@ function CaseOverviewScreen() {
         {/* Integrity summary */}
         <div className="rounded-[var(--radius-card)] border border-line bg-panel p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[13px] font-medium text-text">Integrity summary</h2>
+            <h2 className="text-section text-text">Integrity summary</h2>
             {evidence.length > 0 && (
               <Badge variant={allVerified ? "ok" : "warn"}>{allVerified ? "all verified" : "verification pending"}</Badge>
             )}
@@ -159,7 +163,7 @@ function CaseOverviewScreen() {
         </div>
 
         {/* Key numbers */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {/* "—" (not "0") whenever the backing query errored — a real zero and "the request
               failed so we don't actually know" must never look the same in a forensic summary. */}
           <StatCard icon={Radio} label="Channels" value={recordingsQuery.isError ? "—" : channels || "—"} />
@@ -178,14 +182,14 @@ function CaseOverviewScreen() {
 
         {/* Evidence cards */}
         <div>
-          <h2 className="mb-2 text-[13px] font-medium text-text">Evidence</h2>
+          <h2 className="mb-3 text-section text-text">Evidence</h2>
           {evidenceQuery.isLoading ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Skeleton className="h-28 w-full" />
               <Skeleton className="h-28 w-full" />
             </div>
           ) : evidence.length === 0 ? null : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {evidence.map((e) => (
                 <EvidenceCard key={e.id} evidenceId={e.id} cid={cid} sha256={e.sha256} verified={e.verified} path={e.path} size={e.size_bytes} />
               ))}
@@ -195,9 +199,9 @@ function CaseOverviewScreen() {
 
         {/* Recent audit entries */}
         <div>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-[13px] font-medium text-text">Recent audit entries</h2>
-            <Link to="/cases/$cid/custody" params={{ cid }} className="focus-ring rounded text-xs text-accent-text hover:underline">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-section text-text">Recent audit entries</h2>
+            <Link to="/cases/$cid/custody" params={{ cid }} className="focus-ring rounded text-sm text-accent-text hover:underline">
               View custody chain
             </Link>
           </div>
@@ -206,12 +210,12 @@ function CaseOverviewScreen() {
           ) : (
             <ul className="flex flex-col divide-y divide-line rounded-[var(--radius-card)] border border-line">
               {auditQuery.data?.items.map((entry) => (
-                <li key={entry.seq} className="flex items-center gap-3 px-3 py-2 text-xs">
-                  <span className="font-mono tabular-nums text-text-3">#{entry.seq}</span>
+                <li key={entry.seq} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+                  <span className="font-data tabular-nums text-text-3">#{entry.seq}</span>
                   <span className="text-text">{entry.action.replace(/\./g, " › ")}</span>
-                  <span className="text-text-3">{entry.object_type}/{entry.object_id}</span>
+                  <span className="font-data text-text-3">{entry.object_type}/{entry.object_id}</span>
                   <span className="ml-auto text-text-2">{entry.actor}</span>
-                  <span className="font-mono tabular-nums text-text-3">{formatTimecode(entry.ts_utc)}</span>
+                  <span className="font-data tabular-nums text-text-3">{formatTimecode(entry.ts_utc)}</span>
                 </li>
               ))}
             </ul>
@@ -224,12 +228,12 @@ function CaseOverviewScreen() {
 
 function StatCard({ icon: Icon, label, value }: { icon: typeof Radio; label: string; value: string | number }) {
   return (
-    <div className="rounded-[var(--radius-card)] border border-line bg-card p-3">
-      <div className="mb-1 flex items-center gap-1.5 text-text-3">
+    <div className="rounded-[var(--radius-card)] border border-line bg-card p-4">
+      <div className="mb-1.5 flex items-center gap-1.5 text-text-3">
         <Icon size={13} strokeWidth={1.75} />
-        <span className="text-[11px] uppercase tracking-wide">{label}</span>
+        <span className="text-caption">{label}</span>
       </div>
-      <p className="tabular-nums text-[20px] font-semibold text-text">{value}</p>
+      <p className="tabular-nums text-xl font-semibold text-text">{value}</p>
     </div>
   );
 }
@@ -262,13 +266,13 @@ function EvidenceCard({
       className="focus-ring flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-card p-3 transition-colors hover:border-line-strong"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-mono text-[12px] text-text">{path}</span>
+        <span className="truncate font-data text-sm text-text">{path}</span>
         {match && <TierBadge tier={match.tier as Tier} />}
       </div>
-      <p className="truncate text-xs text-text-2">{match?.display_name ?? "Identifying…"}</p>
+      <p className="truncate text-sm text-text-2">{match?.display_name ?? "Identifying…"}</p>
       <div className="flex items-center justify-between gap-2">
         <IntegrityChip state={verified ? "verified" : "pending"} hash={sha256} />
-        <span className="tabular-nums text-[11px] text-text-3">{formatBytes(size)}</span>
+        <span className="font-data tabular-nums text-caption text-text-3">{formatBytes(size)}</span>
       </div>
     </Link>
   );
@@ -278,7 +282,7 @@ function EmptyEvidence({ cid }: { cid: string }) {
   return (
     <div className="flex flex-col items-center gap-3 py-8 text-center">
       <HardDrive size={24} strokeWidth={1.5} className="text-text-3" />
-      <p className="text-[13px] text-text-2">No evidence registered yet.</p>
+      <p className="text-base text-text-2">No evidence registered yet.</p>
       <Button size="sm" asChild>
         <Link to="/cases/$cid/evidence/new" params={{ cid }}>
           <Plus size={14} strokeWidth={1.75} />

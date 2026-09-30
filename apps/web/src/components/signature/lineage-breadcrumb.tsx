@@ -13,7 +13,7 @@ export interface LineageSegment {
  */
 export function LineageBreadcrumb({ segments, className }: { segments: LineageSegment[]; className?: string }) {
   return (
-    <nav aria-label="Lineage" className={cn("flex min-w-0 items-center gap-1 text-xs text-text-2", className)}>
+    <nav aria-label="Lineage" className={cn("flex min-w-0 items-center gap-1 text-sm text-text-2", className)}>
       {segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
         return (

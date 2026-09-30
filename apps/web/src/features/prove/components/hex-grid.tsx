@@ -58,7 +58,7 @@ export function HexGrid({
         className,
       )}
     >
-      <div className="sticky top-0 z-10 flex border-b border-line bg-panel px-3 py-1.5 font-mono text-[10px] text-text-3">
+      <div className="sticky top-0 z-10 flex border-b border-line bg-panel px-3 py-1.5 font-data text-caption text-text-3">
         <span className="w-[104px] shrink-0">Offset</span>
         <span className="w-[calc(16*22px+8px)] shrink-0">Hex</span>
         <span>ASCII</span>
@@ -70,12 +70,12 @@ export function HexGrid({
           <div
             key={row.offset}
             data-index={vr.index}
-            className="flex items-center px-3 font-mono text-[11px] leading-none"
+            className="flex items-center px-3 font-data text-caption"
             style={{ height: ROW_HEIGHT }}
           >
             <span className={cn("w-[104px] shrink-0 tabular-nums", row.sectorStart ? "text-accent-text" : "text-text-3")}>
               {row.offset.toString(16).padStart(8, "0")}
-              {row.sectorStart && <span className="ml-1 text-[9px] text-text-3">sec {row.sector}</span>}
+              {row.sectorStart && <span className="ml-1 text-caption text-text-3">sec {row.sector}</span>}
             </span>
             <span className="flex w-[calc(16*22px+8px)] shrink-0">
               {row.bytes.map((b, i) => {
@@ -93,7 +93,7 @@ export function HexGrid({
                       isHovered ? "rounded-sm text-text ring-1 ring-inset ring-[var(--brand-400)]" : "text-text-2",
                     )}
                     style={{ backgroundColor: ann && !isHovered ? KIND_BG[ann.kind] : isHovered ? "var(--selected)" : undefined }}
-                    title={ann ? `${ann.name} · offset 0x${(windowOffset + ann.offset).toString(16)}` : undefined}
+                    title={ann ? `${ann.name}, offset 0x${(windowOffset + ann.offset).toString(16)}` : undefined}
                   >
                     {toHexByte(b)}
                   </span>

@@ -31,7 +31,7 @@ export function DeviceLogTable({ cid, eid }: { cid: string; eid: string }) {
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ScrollText size={14} strokeWidth={1.75} className="text-text-3" />
-          <h2 className="text-[13px] font-medium text-text">Device log events</h2>
+          <h2 className="text-section text-text">Device log events</h2>
         </div>
         <Select value={kind} onValueChange={setKind}>
           <SelectTrigger className="w-40">
@@ -51,7 +51,7 @@ export function DeviceLogTable({ cid, eid }: { cid: string; eid: string }) {
       {query.isLoading ? (
         <Skeleton className="h-32 w-full" />
       ) : events.length === 0 ? (
-        <p className="py-6 text-center text-[13px] text-text-2">No device log events{kind !== "all" ? ` of kind "${kind}"` : ""} for this image.</p>
+        <p className="py-6 text-center text-base text-text-2">No device log events{kind !== "all" ? ` of kind "${kind}"` : ""} for this image.</p>
       ) : (
         <Table>
           <TableHeader>
@@ -67,16 +67,16 @@ export function DeviceLogTable({ cid, eid }: { cid: string; eid: string }) {
           <TableBody>
             {events.map((e) => (
               <TableRow key={e.id}>
-                <TableCell className="font-mono tabular-nums">{formatTimecodeUs(e.ts_device_us)}</TableCell>
+                <TableCell className="font-data tabular-nums">{formatTimecodeUs(e.ts_device_us)}</TableCell>
                 <TableCell>
                   <Badge variant={KIND_VARIANT[e.kind] ?? "neutral"}>{e.kind.replace(/_/g, " ")}</Badge>
                 </TableCell>
-                <TableCell className="tabular-nums text-text-2">{e.channel ?? "—"}</TableCell>
+                <TableCell className="font-data tabular-nums text-text-2">{e.channel ?? "—"}</TableCell>
                 <TableCell className="text-text-2">{e.user ?? "—"}</TableCell>
-                <TableCell className="max-w-xs truncate font-mono text-[11px] text-text-3">
+                <TableCell className="max-w-xs truncate font-data text-caption text-text-3">
                   {Object.keys(e.details).length ? Object.entries(e.details).map(([k, v]) => `${k}=${String(v)}`).join(" ") : "—"}
                 </TableCell>
-                <TableCell className="font-mono tabular-nums text-text-3">0x{e.offset.toString(16)}</TableCell>
+                <TableCell className="font-data tabular-nums text-text-3">0x{e.offset.toString(16)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

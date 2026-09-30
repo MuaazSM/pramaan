@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
+import { TierBadge } from "@/components/signature/tier-badge";
 import { api } from "@/api/client";
 
 const FIELD_COLOR: Record<string, string> = {
@@ -63,13 +64,14 @@ export function InferredLayoutPanel({ eid }: { eid: string }) {
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Ruler size={14} strokeWidth={1.75} className="text-inferred" />
-          <h2 className="text-[13px] font-medium text-text">Inferred layout</h2>
-          <span className="rounded-full border border-[color-mix(in_oklab,var(--inferred)_40%,transparent)] bg-[var(--ai-tint)] px-2 py-0.5 text-[10px] font-medium text-inferred">
-            Tier B · structure inferred, not vendor-confirmed
-          </span>
+          <h2 className="text-section text-text">Inferred layout</h2>
+          {/* F6: the signature TierBadge component ("B · inferred", BRAND.md §8) plus a plain
+              caption, instead of a hand-rolled pill duplicating the same "Tier B" fact twice. */}
+          <TierBadge tier="B" />
+          <span className="text-caption text-text-3">structure inferred, not vendor-confirmed</span>
         </div>
         {layout.confirmed_by ? (
-          <span className="flex items-center gap-1 text-xs text-ok">
+          <span className="flex items-center gap-1 text-label text-ok">
             <Check size={13} strokeWidth={2} /> Confirmed by {layout.confirmed_by}
           </span>
         ) : (
@@ -79,10 +81,11 @@ export function InferredLayoutPanel({ eid }: { eid: string }) {
         )}
       </div>
 
-      <p className="mb-3 text-xs text-text-2">
-        Header length <span className="font-mono text-text">{layout.header_len}</span> bytes · codec{" "}
-        <span className="font-mono text-text">{layout.codec}</span> · magic{" "}
-        <span className="font-mono text-text">{layout.magic ?? "not recognised"}</span>
+      {/* F6: each fact self-labelled and spaced, not dot-joined. */}
+      <p className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-2">
+        <span>Header length <span className="font-data text-text">{layout.header_len}</span> bytes</span>
+        <span>Codec <span className="font-data text-text">{layout.codec}</span></span>
+        <span>Magic <span className="font-data text-text">{layout.magic ?? "not recognised"}</span></span>
       </p>
 
       {/* Byte ruler: header_len bytes, each field positioned/sized proportionally. */}
@@ -102,12 +105,12 @@ export function InferredLayoutPanel({ eid }: { eid: string }) {
                 />
               </TooltipTrigger>
               <TooltipContent>
-                {f.name} · offset {f.offset} · {f.width}B · {Math.round(f.confidence * 100)}% confidence
+                {f.name}, offset {f.offset}, {f.width}B, {Math.round(f.confidence * 100)}% confidence
               </TooltipContent>
             </Tooltip>
           ))}
         </div>
-        <div className="mt-1 flex justify-between font-mono text-[10px] text-text-3">
+        <div className="mt-1 flex justify-between font-data text-caption text-text-3">
           <span>0x00</span>
           <span>0x{layout.header_len.toString(16).padStart(2, "0")}</span>
         </div>
@@ -134,12 +137,12 @@ export function InferredLayoutPanel({ eid }: { eid: string }) {
                   {f.name}
                 </span>
               </TableCell>
-              <TableCell className="font-mono tabular-nums">{f.offset}</TableCell>
-              <TableCell className="font-mono tabular-nums">{f.width}B</TableCell>
-              <TableCell className="font-mono uppercase">{f.endian}</TableCell>
-              <TableCell className="font-mono">{f.unit}</TableCell>
-              <TableCell className="font-mono tabular-nums">{Math.round(f.confidence * 100)}%</TableCell>
-              <TableCell className="font-mono tabular-nums text-text-2">{f.support.toLocaleString()}</TableCell>
+              <TableCell className="font-data tabular-nums">{f.offset}</TableCell>
+              <TableCell className="font-data tabular-nums">{f.width}B</TableCell>
+              <TableCell className="font-data">{f.endian}</TableCell>
+              <TableCell className="font-data">{f.unit}</TableCell>
+              <TableCell className="font-data tabular-nums">{Math.round(f.confidence * 100)}%</TableCell>
+              <TableCell className="font-data tabular-nums text-text-2">{f.support.toLocaleString()}</TableCell>
             </TableRow>
           ))}
         </TableBody>

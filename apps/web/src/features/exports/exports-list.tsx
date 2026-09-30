@@ -19,8 +19,8 @@ export function ExportsList({ records }: { records: ExportRecord[] }) {
       <div className="flex flex-col items-center gap-3 rounded-[var(--radius-panel)] border border-dashed border-line-strong py-14 text-center">
         <PackageOpen size={28} strokeWidth={1.5} className="text-text-3" aria-hidden />
         <div>
-          <p className="text-[13px] font-medium text-text">No exports created this session yet</p>
-          <p className="mt-1 max-w-md text-[12px] text-text-2">
+          <p className="text-base font-medium text-text">No exports created this session yet</p>
+          <p className="mt-1 max-w-md text-sm text-text-2">
             Create a signed export above and it will appear here with its manifest hash and a download link.
           </p>
         </div>
@@ -30,7 +30,7 @@ export function ExportsList({ records }: { records: ExportRecord[] }) {
 
   return (
     <div className="overflow-x-auto rounded-[var(--radius-card)] border border-line">
-      <table className="w-full caption-bottom text-[13px]">
+      <table className="w-full caption-bottom text-base">
         <TableHeader>
           <TableRow>
             <TableHead>Export</TableHead>
@@ -45,33 +45,33 @@ export function ExportsList({ records }: { records: ExportRecord[] }) {
         <tbody>
           {records.map((r) => (
             <TableRow key={r.id} data-testid="export-row">
-              <TableCell className="font-mono text-[12px] tabular-nums text-text" title={r.id}>
+              <TableCell className="font-data text-sm tabular-nums text-text" title={r.id}>
                 {r.id}
               </TableCell>
               <TableCell>
                 <span className="flex flex-wrap items-center gap-1.5">
                   {r.channel != null && (
-                    <span className="flex items-center gap-1.5 font-mono text-[12px]">
+                    <span className="flex items-center gap-1.5 font-data text-sm">
                       <span className="size-2 rounded-full" style={{ backgroundColor: `var(--ch-${(((r.channel || 1) - 1) % 8) + 1})` }} aria-hidden />
                       CH{r.channel}
                     </span>
                   )}
                   {r.recording_id ? (
-                    <Badge variant="neutral" className="font-mono">
+                    <Badge variant="neutral" className="font-data">
                       {r.recording_id}
                     </Badge>
                   ) : (
-                    <span className="text-[11px] text-text-3">channel range</span>
+                    <span className="text-caption text-text-3">channel range</span>
                   )}
                 </span>
               </TableCell>
-              <TableCell className="font-mono text-[12px] tabular-nums">
+              <TableCell className="font-data text-sm tabular-nums">
                 <RangeCell from={r.from_norm_us} to={r.to_norm_us} wholeRecording={r.recording_id != null} />
               </TableCell>
               <TableCell>
                 <IntegrityChip state="verified" hash={r.manifest_sha256} />
               </TableCell>
-              <TableCell className="font-mono text-[12px] tabular-nums text-text-2">{formatTimecode(r.created_utc)}</TableCell>
+              <TableCell className="font-data text-sm tabular-nums text-text-2">{formatTimecode(r.created_utc)}</TableCell>
               <TableCell className="text-text-2">{r.examiner}</TableCell>
               <TableCell>
                 <Button asChild size="sm" variant="secondary">

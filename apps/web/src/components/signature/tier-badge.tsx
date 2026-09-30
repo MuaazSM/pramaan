@@ -14,12 +14,14 @@ export function TierBadge({ tier, className }: { tier: Tier; className?: string 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none",
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-caption",
         TIER_CLASS[tier],
         className,
       )}
     >
-      <span className="font-mono">{tier}</span>
+      {/* BRAND.md §8 writes this exact format ("A · parsed") — the one signature component the
+          dot stays in besides CustodySeal (docs/progress/F6.md). */}
+      <span className="font-data">{tier}</span>
       <span className="opacity-70">{"·"}</span>
       {TIER_LABEL[tier]}
     </span>

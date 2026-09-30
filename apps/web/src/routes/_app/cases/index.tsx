@@ -60,8 +60,8 @@ function CasesScreen() {
       <div className="mx-auto flex max-w-6xl flex-col gap-4 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">Cases</h1>
-            <p className="text-[13px] text-text-2">Every case this workstation has examined.</p>
+            <h1 className="text-page-title text-text">Cases</h1>
+            <p className="mt-1 text-base text-text-2">Every case this workstation has examined.</p>
           </div>
           <Button>
             <Plus size={15} strokeWidth={1.75} />
@@ -86,7 +86,7 @@ function CasesScreen() {
                 type="button"
                 onClick={() => setStatusFilter(statusFilter === s ? null : s)}
                 className={cn(
-                  "focus-ring rounded-full border px-2.5 py-1 text-xs font-medium capitalize transition-colors duration-[var(--dur-fast)]",
+                  "focus-ring rounded-full border px-2.5 py-1 text-label capitalize transition-colors duration-[var(--dur-fast)]",
                   statusFilter === s
                     ? "border-[color-mix(in_oklab,var(--brand-500)_45%,transparent)] bg-[var(--selected)] text-accent-text"
                     : "border-line-strong bg-control text-text-2 hover:text-text",
@@ -123,7 +123,7 @@ function CasesScreen() {
               {filtered.map((c) => (
                 <TableRow key={c.id} tabIndex={0} className="focus-ring cursor-pointer">
                   <TableCell>
-                    <Link to="/cases/$cid" params={{ cid: c.id }} className="focus-ring rounded font-mono text-[12px] text-accent-text hover:underline">
+                    <Link to="/cases/$cid" params={{ cid: c.id }} className="focus-ring rounded font-data text-sm text-accent-text hover:underline">
                       {c.case_number}
                     </Link>
                   </TableCell>
@@ -155,7 +155,7 @@ function EmptyState({ hasCases }: { hasCases: boolean }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-[var(--radius-panel)] border border-dashed border-line-strong py-16 text-center">
       <FolderKanban size={28} strokeWidth={1.5} className="text-text-3" />
-      <p className="text-[13px] text-text-2">
+      <p className="text-base text-text-2">
         {hasCases ? "No cases match these filters." : "No cases yet. Create one to register evidence."}
       </p>
       {!hasCases && (

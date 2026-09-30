@@ -97,12 +97,13 @@ export function ProveView({ caseId, frameId }: { caseId: string; frameId: string
     <div className="flex flex-col gap-4 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-[-0.02em] text-text">
+          <h1 className="flex items-center gap-2 text-page-title text-text">
             <Binary size={18} strokeWidth={1.75} className="text-text-3" />
             Prove it
           </h1>
-          <p className="mt-1 truncate font-mono text-[12px] text-text-2">
-            {`${hexQuery.data.frame_id} · ${bytes.length.toLocaleString()} bytes from offset 0x${hexQuery.data.offset.toString(16)}`}
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 text-label text-text-2">
+            <span className="truncate font-data">{hexQuery.data.frame_id}</span>
+            <span className="font-data">{bytes.length.toLocaleString()} bytes from offset 0x{hexQuery.data.offset.toString(16)}</span>
           </p>
         </div>
         <Button onClick={() => void copyProof()}>
@@ -143,7 +144,7 @@ export function ProveView({ caseId, frameId }: { caseId: string; frameId: string
               onDecrease={() => setAfter((v) => Math.max(0, v - AFTER_STEP))}
               onIncrease={() => setAfter((v) => Math.min(MAX_WINDOW, v + AFTER_STEP))}
             />
-            {hexQuery.isFetching && <span className="text-[11px] text-text-3">{"Loading window…"}</span>}
+            {hexQuery.isFetching && <span className="text-caption text-text-3">{"Loading window…"}</span>}
           </div>
           <HexGrid
             bytes={bytes}
@@ -156,7 +157,7 @@ export function ProveView({ caseId, frameId }: { caseId: string; frameId: string
         </div>
         <div className="flex flex-col gap-4">
           <section className="rounded-[var(--radius-card)] border border-line bg-panel p-3">
-            <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-text-3">Fields</h2>
+            <h2 className="mb-2 text-label text-text-3">Fields</h2>
             <FieldDecoder
               bytes={bytes}
               annotations={annotations}
@@ -167,7 +168,7 @@ export function ProveView({ caseId, frameId }: { caseId: string; frameId: string
           </section>
           <section className="flex flex-1 flex-col rounded-[var(--radius-card)] border border-line bg-panel">
             <div className="border-b border-line px-3 py-2">
-              <h2 className="text-[11px] font-medium uppercase tracking-wide text-text-3">Frame context</h2>
+              <h2 className="text-label text-text-3">Frame context</h2>
             </div>
             <FrameInspector caseId={caseId} frameId={frameId} />
           </section>
@@ -189,9 +190,9 @@ function WindowStepper({
   onIncrease: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1 rounded-full border border-line-strong bg-card py-0.5 pl-2.5 pr-1 text-[11px]">
+    <div className="flex items-center gap-1 rounded-full border border-line-strong bg-card py-0.5 pl-2.5 pr-1 text-caption">
       <span className="text-text-3">{label}</span>
-      <span className="font-mono tabular-nums text-text">{value.toLocaleString()}B</span>
+      <span className="font-data tabular-nums text-text">{value.toLocaleString()}B</span>
       <button type="button" onClick={onDecrease} aria-label={`Decrease ${label.toLowerCase()} window`} className="focus-ring rounded p-0.5 text-text-3 hover:bg-control hover:text-text">
         <ChevronLeft size={12} strokeWidth={1.75} />
       </button>

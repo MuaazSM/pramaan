@@ -95,8 +95,8 @@ export function ReviewWorkspace({ caseId }: { caseId: string }) {
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
         <PlaySquare size={22} strokeWidth={1.5} className="text-text-3" />
         <div>
-          <p className="text-[13px] font-medium text-text">No timeline yet</p>
-          <p className="mt-1 text-[12px] text-text-2">Run a scan on this case's evidence to build the timeline.</p>
+          <p className="text-base font-medium text-text">No timeline yet</p>
+          <p className="mt-1 text-sm text-text-2">Run a scan on this case's evidence to build the timeline.</p>
         </div>
       </div>
     );

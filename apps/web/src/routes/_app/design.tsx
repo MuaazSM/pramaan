@@ -40,7 +40,7 @@ export const Route = createFileRoute("/_app/design")({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-[13px] font-semibold uppercase tracking-wide text-text-3">{title}</h2>
+      <h2 className="text-section text-text-3">{title}</h2>
       <div className="rounded-[var(--radius-panel)] border border-line bg-panel p-5">{children}</div>
     </section>
   );
@@ -49,7 +49,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-line py-3 last:border-0">
-      <span className="w-32 shrink-0 text-xs text-text-3">{label}</span>
+      <span className="w-32 shrink-0 text-label text-text-3">{label}</span>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );
@@ -62,8 +62,8 @@ function DesignGallery() {
     <ScreenShell segments={[{ label: "Design gallery" }]}>
       <div className="mx-auto flex max-w-4xl flex-col gap-8 p-6 pb-24">
         <div>
-          <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">Design gallery</h1>
-          <p className="text-[13px] text-text-2">
+          <h1 className="text-page-title text-text">Design gallery</h1>
+          <p className="mt-1 text-base text-text-2">
             Every primitive and signature component, every state, both themes. Internal QA surface.
           </p>
         </div>
@@ -315,7 +315,7 @@ function DesignGallery() {
             {["ch-1", "ch-2", "ch-3", "ch-4", "ch-5", "ch-6", "ch-7", "ch-8"].map((c) => (
               <div key={c} className="flex flex-col items-center gap-1">
                 <div className="size-8 rounded-[var(--radius-control)]" style={{ background: `var(--${c})` }} />
-                <span className="font-mono text-[10px] text-text-3">{c}</span>
+                <span className="font-data text-caption text-text-3">{c}</span>
               </div>
             ))}
           </div>

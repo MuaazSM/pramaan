@@ -48,7 +48,7 @@ export function PipelinePanel({ cid, eid }: { cid: string; eid: string }) {
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-panel p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-[13px] font-medium text-text">Scan pipeline</h2>
+        <h2 className="text-section text-text">Scan pipeline</h2>
         <div className="flex items-center gap-2">
           {activeJob && <Badge variant={STATUS_VARIANT[pipeline?.status ?? activeJob.status]}>{pipeline?.status ?? activeJob.status}</Badge>}
           <Button size="sm" onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending || pipeline?.status === "running"}>
@@ -65,7 +65,7 @@ export function PipelinePanel({ cid, eid }: { cid: string; eid: string }) {
       ) : (
         <div className="flex flex-col gap-2">
           <JobLog stages={pipeline?.stages ?? activeJob.stages} logLines={pipeline?.logLines ?? activeJob.log_lines} pct={pipeline?.pct ?? activeJob.pct} />
-          <p className="text-right font-mono text-[10px] text-text-3">updated {formatTimecode(activeJob.updated_utc)}</p>
+          <p className="text-right font-data text-caption text-text-3">updated {formatTimecode(activeJob.updated_utc)}</p>
         </div>
       )}
     </section>
@@ -76,8 +76,8 @@ function EmptyPipeline() {
   return (
     <div className="flex flex-col items-center gap-2 py-6 text-center">
       <PlayCircle size={20} strokeWidth={1.5} className="text-text-3" />
-      <p className="text-[13px] text-text-2">This image has not been scanned yet.</p>
-      <p className="text-xs text-text-3">Run scan to hash-verify, identify, carve and build the timeline.</p>
+      <p className="text-base text-text-2">This image has not been scanned yet.</p>
+      <p className="text-sm text-text-3">Run scan to hash-verify, identify, carve and build the timeline.</p>
     </div>
   );
 }

@@ -51,5 +51,5 @@ export function SheetHeader({ className, ...props }: React.HTMLAttributes<HTMLDi
 }
 
 export function SheetTitle({ className, ...props }: DialogPrimitive.DialogTitleProps) {
-  return <DialogPrimitive.Title className={cn("text-[14px] font-semibold text-text", className)} {...props} />;
+  return <DialogPrimitive.Title className={cn("text-section text-text", className)} {...props} />;
 }

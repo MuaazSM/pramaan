@@ -45,8 +45,8 @@ export function CustodyScreen({ caseId }: { caseId: string }) {
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5 p-6">
       <div>
-        <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">Custody</h1>
-        <p className="text-[13px] text-text-2">
+        <h1 className="text-page-title text-text">Custody</h1>
+        <p className="mt-1 text-base text-text-2">
           Every action on this case is an entry in a hash-chained, Ed25519-signed log. Verification recomputes the chain; anchors
           commit a Merkle root of it.
         </p>
@@ -101,10 +101,10 @@ function VerifyPanel({ caseId }: { caseId: string }) {
             )}
           </span>
           <div>
-            <h2 id="verify-heading" className="text-[14px] font-semibold text-text">
+            <h2 id="verify-heading" className="text-section text-text">
               Chain verification
             </h2>
-            <p className="text-xs text-text-2">
+            <p className="text-sm text-text-2">
               Recomputes every entry hash, link and signature on the server. Read-only — re-verifying changes nothing.
             </p>
           </div>
@@ -126,18 +126,18 @@ function VerifyPanel({ caseId }: { caseId: string }) {
               {result.ok ? <Badge variant="ok">chain ok</Badge> : <Badge variant="danger">chain broken</Badge>}
             </Stat>
             <Stat label="Entries">
-              <span className="font-mono tabular-nums text-text">{result.length.toLocaleString()}</span>
+              <span className="font-data tabular-nums text-text">{result.length.toLocaleString()}</span>
             </Stat>
             <Stat label="Head hash" wide>
               {result.head_hash ? (
                 <IntegrityChip state={result.ok ? "verified" : "mismatch"} hash={result.head_hash} />
               ) : (
-                <span className="text-xs text-text-3">empty chain</span>
+                <span className="text-sm text-text-3">empty chain</span>
               )}
             </Stat>
             {!result.ok && result.first_bad_seq != null && (
               <Stat label="First bad entry">
-                <span className="font-mono tabular-nums text-danger">#{result.first_bad_seq}</span>
+                <span className="font-data tabular-nums text-danger">#{result.first_bad_seq}</span>
               </Stat>
             )}
           </div>
@@ -150,7 +150,7 @@ function VerifyPanel({ caseId }: { caseId: string }) {
 function Stat({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
     <div className={cn("flex flex-col gap-1", wide && "col-span-2")}>
-      <span className="text-[11px] uppercase tracking-wide text-text-3">{label}</span>
+      <span className="text-label text-text-3">{label}</span>
       <div className="flex min-h-6 items-center">{children}</div>
     </div>
   );
@@ -201,10 +201,10 @@ function AnchorsPanel({ caseId }: { caseId: string }) {
             <AnchorIcon size={16} strokeWidth={1.75} className="text-text-2" />
           </span>
           <div>
-            <h2 id="anchors-heading" className="text-[14px] font-semibold text-text">
+            <h2 id="anchors-heading" className="text-section text-text">
               Anchors
             </h2>
-            <p className="text-xs text-text-2">Merkle root over entry hashes, signed with the lab key.</p>
+            <p className="text-sm text-text-2">Merkle root over entry hashes, signed with the lab key.</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -228,13 +228,13 @@ function AnchorsPanel({ caseId }: { caseId: string }) {
         <p
           role="alert"
           data-testid="anchor-error"
-          className="mb-3 rounded-[var(--radius-card)] border border-[color-mix(in_oklab,var(--danger)_40%,transparent)] bg-[var(--danger-tint)] p-3 text-xs text-danger"
+          className="mb-3 rounded-[var(--radius-card)] border border-[color-mix(in_oklab,var(--danger)_40%,transparent)] bg-[var(--danger-tint)] p-3 text-sm text-danger"
         >
           Anchor not created. {create.error instanceof Error ? create.error.message : "Unknown error."}
         </p>
       )}
       {create.isSuccess && !create.isPending && (
-        <p role="status" className="mb-3 flex items-center gap-1.5 text-xs text-ok">
+        <p role="status" className="mb-3 flex items-center gap-1.5 text-sm text-ok">
           <Check size={12} strokeWidth={2} /> {create.data.backend} anchor created over entries #{create.data.from_seq}–#{create.data.to_seq}.
         </p>
       )}
@@ -246,7 +246,7 @@ function AnchorsPanel({ caseId }: { caseId: string }) {
       ) : sorted.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[var(--radius-card)] border border-dashed border-line-strong py-8 text-center">
           <AnchorIcon size={22} strokeWidth={1.5} className="text-text-3" />
-          <p className="text-[13px] text-text-2">No anchors yet. Create one to commit the current chain head.</p>
+          <p className="text-base text-text-2">No anchors yet. Create one to commit the current chain head.</p>
         </div>
       ) : (
         <ul data-testid="anchor-list" className="flex flex-col gap-2">
@@ -263,12 +263,12 @@ function AnchorRow({ anchor }: { anchor: Anchor }) {
   return (
     <li
       data-testid="anchor-row"
-      className="grid gap-x-4 gap-y-2 rounded-[var(--radius-card)] border border-line bg-card p-3 text-xs sm:grid-cols-[1fr_auto]"
+      className="grid gap-x-4 gap-y-2 rounded-[var(--radius-card)] border border-line bg-card p-3 text-sm sm:grid-cols-[1fr_auto]"
     >
       <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex items-center gap-2">
           <Badge variant={anchor.backend === "fabric" ? "brand" : "neutral"}>{anchor.backend}</Badge>
-          <span className="font-mono tabular-nums text-text-2">
+          <span className="font-data tabular-nums text-text-2">
             entries #{anchor.from_seq}–#{anchor.to_seq}
           </span>
         </div>
@@ -278,10 +278,10 @@ function AnchorRow({ anchor }: { anchor: Anchor }) {
         </div>
       </div>
       <div className="flex flex-col gap-1.5 sm:items-end">
-        <span className="font-mono tabular-nums text-text-2">{formatTimecode(anchor.ts_utc)}</span>
+        <span className="font-data tabular-nums text-text-2">{formatTimecode(anchor.ts_utc)}</span>
         <span className="flex items-center gap-1.5">
           <span className="text-text-3">lab sig</span>
-          <span className="font-mono text-text-2" title={anchor.lab_signature}>
+          <span className="font-data text-text-2" title={anchor.lab_signature}>
             {shortHash(anchor.lab_signature)}
           </span>
         </span>
@@ -304,7 +304,7 @@ function CopyMono({ value, label }: { value: string; label: string }) {
   }
   return (
     <span className="inline-flex min-w-0 items-center gap-1 rounded-full border border-line-strong bg-control px-2 py-1">
-      <span className="truncate font-mono text-text" title={value}>
+      <span className="truncate font-data text-text" title={value}>
         {value}
       </span>
       <button
@@ -354,10 +354,10 @@ function AuditTimeline({ caseId }: { caseId: string }) {
           <ScrollText size={16} strokeWidth={1.75} className="text-text-2" />
         </span>
         <div>
-          <h2 id="audit-heading" className="text-[14px] font-semibold text-text">
+          <h2 id="audit-heading" className="text-section text-text">
             Audit log
           </h2>
-          <p className="text-xs text-text-2">
+          <p className="text-sm text-text-2">
             Chain order, oldest first.
             {v && ` Showing ${entries.length.toLocaleString()} of ${v.length.toLocaleString()} entries.`}
           </p>
@@ -371,7 +371,7 @@ function AuditTimeline({ caseId }: { caseId: string }) {
           <Skeleton className="h-14 w-full" />
         </div>
       ) : audit.isError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-sm text-danger">
           Could not load the audit log.{" "}
           <button type="button" className="focus-ring underline" onClick={() => void audit.refetch()}>
             Retry
@@ -380,7 +380,7 @@ function AuditTimeline({ caseId }: { caseId: string }) {
       ) : entries.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[var(--radius-card)] border border-dashed border-line-strong py-10 text-center">
           <ScrollText size={24} strokeWidth={1.5} className="text-text-3" />
-          <p className="text-[13px] text-text-2">No custody entries recorded for this case yet.</p>
+          <p className="text-base text-text-2">No custody entries recorded for this case yet.</p>
         </div>
       ) : (
         <>
@@ -420,20 +420,20 @@ function AuditRow({ entry, state, last }: { entry: AuditEntry; state: IntegrityS
       <div className="min-w-0 flex-1 rounded-[var(--radius-card)] border border-line bg-card px-3 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <div className="flex min-w-0 items-baseline gap-2">
-            <span className="font-mono text-xs tabular-nums text-text-3">#{entry.seq}</span>
-            <span className="truncate font-mono text-[13px] font-medium text-text">{entry.action}</span>
+            <span className="font-data text-caption tabular-nums text-text-3">#{entry.seq}</span>
+            <span className="truncate font-data text-sm font-medium text-text">{entry.action}</span>
           </div>
-          <span className="font-mono text-xs tabular-nums text-text-2">{formatTimecode(entry.ts_utc)}</span>
+          <span className="font-data text-caption tabular-nums text-text-2">{formatTimecode(entry.ts_utc)}</span>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-text-2">
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-text-2">
           <span>
-            {entry.actor} <span className="text-text-3">· {entry.role}</span>
+            {entry.actor} <span className="text-text-3">({entry.role})</span>
           </span>
-          <span className="font-mono text-text-3">
+          <span className="font-data text-text-3">
             {entry.object_type}/{entry.object_id}
           </span>
           {entry.payload_sha256 && (
-            <span className="font-mono text-text-3" title={entry.payload_sha256}>
+            <span className="font-data text-text-3" title={entry.payload_sha256}>
               payload {shortHash(entry.payload_sha256)}
             </span>
           )}

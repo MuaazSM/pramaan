@@ -39,10 +39,10 @@ export function FindingsScreen({ cid }: { cid: string }) {
   const findings = [...(query.data ?? [])].sort((a, b) => b.confidence - a.confidence);
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-8 p-6">
       <div>
-        <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-text">Findings</h1>
-        <p className="text-[13px] text-text-2">Deletion verdicts recovered from unindexed space, with every reason traced back to bytes.</p>
+        <h1 className="text-page-title text-text">Findings</h1>
+        <p className="mt-1 text-base text-text-2">Deletion verdicts recovered from unindexed space, with every reason traced back to bytes.</p>
       </div>
 
       {query.isLoading ? (
@@ -77,10 +77,12 @@ function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }
             <ShieldAlert size={16} strokeWidth={1.75} className="text-recovered" />
           </span>
           <div>
-            <h2 className="text-[14px] font-semibold text-text">
-              {METHOD_LABEL[finding.method]} deletion{finding.channel != null ? ` · CH${finding.channel}` : ""}
+            {/* F6: "on channel N", not "· CHN" — plain language instead of a dot-joined
+                abbreviation (docs/progress/F6.md). */}
+            <h2 className="text-section text-text">
+              {METHOD_LABEL[finding.method]} deletion{finding.channel != null ? ` on channel ${finding.channel}` : ""}
             </h2>
-            <p className="font-mono text-xs tabular-nums text-text-2">
+            <p className="mt-0.5 font-data text-sm tabular-nums text-text-2">
               {formatTimecodeUs(finding.start_ts_us)} → {formatTimecodeUs(finding.end_ts_us)}
             </p>
           </div>
@@ -88,17 +90,17 @@ function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }
         <Badge variant="recovered">recovered</Badge>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Actor" value={finding.actor ?? "unknown"} />
         <Stat label="Frames recovered" value={finding.frames_recovered.toLocaleString()} mono />
         <Stat label="Bytes recovered" value={formatBytes(finding.bytes_recovered)} mono />
         <Stat label="Action time" value={finding.action_ts_us != null ? formatTimecodeUs(finding.action_ts_us) : "—"} mono />
       </div>
 
-      <div className="mb-3">
-        <div className="mb-1 flex items-center justify-between text-xs text-text-2">
+      <div className="mb-4">
+        <div className="mb-1 flex items-center justify-between text-label text-text-2">
           <span>Confidence</span>
-          <span className="font-mono tabular-nums">{Math.round(finding.confidence * 100)}%</span>
+          <span className="font-data tabular-nums">{Math.round(finding.confidence * 100)}%</span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-control">
           <div className="h-full rounded-full bg-recovered" style={{ width: `${finding.confidence * 100}%` }} />
@@ -106,12 +108,12 @@ function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }
       </div>
 
       <div className="mb-4">
-        <h3 className="mb-1.5 text-[11px] uppercase tracking-wide text-text-3">Reasons</h3>
+        <h3 className="mb-1.5 text-label text-text-2">Reasons</h3>
         <ul className="flex flex-col gap-1">
           {finding.reasons.map((reason, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-xs text-text-2">
+            <li key={i} className="flex items-start gap-1.5 text-sm text-text-2">
               <Hash size={11} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-3" />
-              <span className="font-mono">{reason}</span>
+              <span className="font-data">{reason}</span>
             </li>
           ))}
         </ul>
@@ -119,10 +121,10 @@ function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }
 
       {finding.evidence_refs.length > 0 && (
         <div className="mb-4">
-          <h3 className="mb-1.5 text-[11px] uppercase tracking-wide text-text-3">Evidence refs</h3>
+          <h3 className="mb-1.5 text-label text-text-2">Evidence refs</h3>
           <div className="flex flex-wrap gap-1.5">
             {finding.evidence_refs.map((ref) => (
-              <span key={ref} className="rounded-full border border-line-strong bg-control px-2 py-0.5 font-mono text-[10px] text-text-2">
+              <span key={ref} className="rounded-full border border-line-strong bg-control px-2 py-0.5 font-data text-caption text-text-2">
                 {ref}
               </span>
             ))}
@@ -131,14 +133,17 @@ function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }
       )}
 
       <div className="mb-4">
-        <h3 className="mb-1.5 text-[11px] uppercase tracking-wide text-text-3">Prove it — recovered frames (sample)</h3>
+        {/* F6: "Recovered frames (sample)" — dropped the spaced em dash and the "Prove it" repeat
+            (each chip already links to Prove it; naming it twice was the redundant eyebrow the
+            brief calls out). */}
+        <h3 className="mb-1.5 text-label text-text-2">Recovered frames (sample)</h3>
         <div className="flex flex-wrap gap-1.5">
           {frameChips.map((chip) => (
             <Link
               key={chip.label}
               to="/cases/$cid/frames/$fid/prove"
               params={{ cid, fid: chip.label }}
-              className="focus-ring flex items-center gap-1 rounded-full border border-line-strong bg-control px-2 py-0.5 font-mono text-[10px] text-text-2 transition-colors hover:border-[color-mix(in_oklab,var(--brand-500)_40%,transparent)] hover:text-accent-text"
+              className="focus-ring flex items-center gap-1 rounded-full border border-line-strong bg-control px-2 py-0.5 font-data text-caption text-text-2 transition-colors hover:border-[color-mix(in_oklab,var(--brand-500)_40%,transparent)] hover:text-accent-text"
             >
               <Binary size={10} strokeWidth={1.75} />
               {chip.label}
@@ -175,8 +180,8 @@ function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }
 function Stat({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wide text-text-3">{label}</dt>
-      <dd className={mono ? "font-mono tabular-nums text-text" : "text-text"}>{value}</dd>
+      <dt className="text-label text-text-2">{label}</dt>
+      <dd className={mono ? "font-data tabular-nums text-text" : "text-base text-text"}>{value}</dd>
     </div>
   );
 }
@@ -185,7 +190,7 @@ function EmptyFindings() {
   return (
     <div className="flex flex-col items-center gap-3 rounded-[var(--radius-panel)] border border-dashed border-line-strong py-16 text-center">
       <ShieldAlert size={28} strokeWidth={1.5} className="text-text-3" />
-      <p className="text-[13px] text-text-2">No deletion findings recorded for this case yet.</p>
+      <p className="text-base text-text-2">No deletion findings recorded for this case yet.</p>
     </div>
   );
 }

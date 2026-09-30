@@ -40,7 +40,7 @@ export function InspectorSlot({ caseId, frames }: { caseId: string; frames: Fram
   return (
     <div className="flex w-[320px] shrink-0 flex-col border-l border-line bg-panel">
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
-        <span className="text-xs font-medium text-text">Frame inspector</span>
+        <span className="text-section text-text">Frame inspector</span>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Collapse inspector" onClick={toggle}>
@@ -62,8 +62,8 @@ function InspectorEmpty() {
         <ScanEye size={18} strokeWidth={1.5} className="text-text-3" />
       </div>
       <div>
-        <p className="text-[13px] font-medium text-text">No frame at the current playhead yet</p>
-        <p className="mt-1 text-[12px] text-text-2">
+        <p className="text-base font-medium text-text">No frame at the current playhead yet</p>
+        <p className="mt-1 text-sm text-text-2">
           No indexed frame is available on the leader channel. Move the playhead or pick another channel.
         </p>
       </div>

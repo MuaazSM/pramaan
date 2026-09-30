@@ -28,14 +28,14 @@ export function QueryErrorState({
     <div className={cn("flex flex-col items-center gap-3 py-16 text-center", className)}>
       <Icon size={22} strokeWidth={1.5} className="text-text-3" />
       <div className="flex flex-col gap-1">
-        <p className="text-[13px] font-medium text-text">{title}</p>
-        <p className="max-w-sm text-xs text-text-2">{detail}</p>
+        <p className="text-section text-text">{title}</p>
+        <p className="max-w-sm text-base text-text-2">{detail}</p>
       </div>
       {onRetry && kind !== "forbidden" && kind !== "not_found" && (
         <button
           type="button"
           onClick={onRetry}
-          className="focus-ring mt-1 rounded-[var(--radius-control)] border border-line-strong px-2.5 py-1 text-xs text-text-2 hover:bg-control hover:text-text"
+          className="focus-ring mt-1 rounded-[var(--radius-control)] border border-line-strong px-2.5 py-1 text-sm text-text-2 hover:bg-control hover:text-text"
         >
           Try again
         </button>
