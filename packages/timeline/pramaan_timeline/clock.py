@@ -323,10 +323,25 @@ def normalise_frame_table(
     "Decisions"), each with reduced confidence. Row order and every other
     column are left untouched (CLAUDE.md rule 5: no resorting here — the
     table's on-disk sort order is a contract owned by ``pramaan_core.frames``).
+
+    Header/index-tier segment lookup for a *multi-segment* model does **not**
+    use :func:`offset_for_device_ts` directly — a backward clock-set (docs §4
+    step 2's own worked example) makes a device's raw displayed value
+    ambiguous by construction (the device re-displays a range of values it
+    already showed before the jump), so a value-only range lookup cannot
+    always tell which side of the jump a frame is really on. Resolved
+    instead via :func:`_chronological_segment_offsets`: walk each channel's
+    header/index-timed rows in ``payload_offset`` order (the same
+    chronological proxy already used below for Tier C interpolation) and
+    advance to the next reconstructed segment exactly when the device clock
+    jumps backwards by more than :data:`UNEXPLAINED_JUMP_THRESHOLD_S` —
+    i.e. exactly at a real ``time_change`` event, not at an ambiguous but
+    forward-moving value. See docs/progress/A2.md "Decisions".
     """
     rows: list[dict[str, object]] = table.to_pylist()
+    chrono_offsets = _chronological_segment_offsets(rows, clock_models)
 
-    for row in rows:
+    for i, row in enumerate(rows):
         channel = _as_int(row["channel"])
         model = clock_models.get(channel)
         if model is None:
@@ -343,7 +358,9 @@ def normalise_frame_table(
             mult = _TIER_INDEX_MULT
 
         if device_ts is not None:
-            offset = offset_for_device_ts(model.segments, device_ts)
+            offset = chrono_offsets.get(i)
+            if offset is None:
+                offset = offset_for_device_ts(model.segments, device_ts)
             row["ts_norm_us"] = device_ts - offset
             row["norm_confidence"] = round(model.confidence * mult, 6)
             continue
@@ -362,6 +379,45 @@ def normalise_frame_table(
 
     columns = {name: [row[name] for row in rows] for name in table.schema.names}
     return pa.table(columns, schema=table.schema)
+
+
+def _chronological_segment_offsets(
+    rows: list[dict[str, object]], clock_models: Mapping[int | None, ClockModel]
+) -> dict[int, int]:
+    """Row-index -> resolved ``offset_us`` for every header/index-timed row
+    whose model has more than one segment (see :func:`normalise_frame_table`
+    "Header/index-tier segment lookup"). Single-segment models are left out
+    entirely (there is nothing ambiguous to resolve; the per-row fallback in
+    the caller uses :func:`offset_for_device_ts`, identical for that case).
+    """
+    threshold_us = int(UNEXPLAINED_JUMP_THRESHOLD_S * 1_000_000)
+    by_channel: dict[int | None, list[int]] = {}
+    for i, row in enumerate(rows):
+        by_channel.setdefault(_as_int(row["channel"]), []).append(i)
+
+    resolved: dict[int, int] = {}
+    for channel, indices in by_channel.items():
+        model = clock_models.get(channel) or clock_models.get(None)
+        if model is None or len(model.segments) <= 1:
+            continue
+        ordered = sorted(indices, key=lambda i: _required_int(rows[i]["payload_offset"]))
+        seg_idx = 0
+        high_water: int | None = None
+        for i in ordered:
+            device_ts = _as_int(rows[i].get("ts_header_us"))
+            if device_ts is None:
+                device_ts = _as_int(rows[i].get("ts_index_us"))
+            if device_ts is None:
+                continue
+            if (
+                high_water is not None
+                and device_ts < high_water - threshold_us
+                and seg_idx < len(model.segments) - 1
+            ):
+                seg_idx += 1
+            high_water = device_ts if high_water is None else max(high_water, device_ts)
+            resolved[i] = model.segments[seg_idx].offset_us
+    return resolved
 
 
 def _as_int(value: object) -> int | None:
