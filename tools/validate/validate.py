@@ -374,6 +374,7 @@ def process_image(
     truth_frame_types = {r["frame_type"] for r in truth_frames}
 
     api_frames_by_key: dict[int, dict[str, Any]] = {}
+    api_frames_all: list[dict[str, Any]] = []  # unfiltered — used by the determinism check below
     truncated = False
     truncated_detail: dict[str, Any] = {}
     for ch in channels:
@@ -388,6 +389,7 @@ def process_image(
             if page_truncated:
                 truncated = True
                 truncated_detail[f"ch{ch}/{source}"] = {"fetched": len(page), "total": total}
+            api_frames_all.extend(page)
             for f in page:
                 if truth_frame_types and f["frame_type"] not in truth_frame_types:
                     continue
@@ -493,19 +495,59 @@ def process_image(
         result.errors.append(f"deletions query failed: {exc}")
     truth_deletions = truth.get("deletions", [])
     if truth_deletions:
+        # Primary match: channel + time-window overlap. Fallback: when a
+        # channel has exactly one truth deletion and the API reports
+        # exactly one finding on that channel, they're unambiguously "the
+        # same event" even without a time overlap — task FIX-11 found this
+        # matters for a genuine `overwrite` scenario (hwsim_overwrite):
+        # once bytes are truly gone, the original window can't be
+        # recovered at all, so CORE's own analyzer *estimates* a
+        # replacement window from whatever survives nearby
+        # (packages/recovery/pramaan_recovery/deletion.py's own finding
+        # `reasons` say so explicitly: "...estimated from the size of the
+        # recording that now occupies the slot...not directly observed").
+        # Scoring "method correct" against a window this corpus's own
+        # ground truth can't expect CORE to reproduce exactly would
+        # penalise the tool for the corpus's own honesty about what's
+        # unrecoverable, not for a wrong verdict — this is a harness
+        # matching-strictness bug, not a CORE bug (confirmed directly:
+        # hwsim_overwrite's API findings already report the correct
+        # method on every channel, just outside the naive overlap window).
+        truth_by_channel: dict[int, list[dict[str, Any]]] = {}
+        for td in truth_deletions:
+            truth_by_channel.setdefault(td["channel"], []).append(td)
+        api_by_channel: dict[int | None, list[dict[str, Any]]] = {}
+        for ad in api_deletions:
+            api_by_channel.setdefault(ad["channel"], []).append(ad)
+
         method_correct = 0
         actor_checked = 0
         actor_correct = 0
+        match_methodology: dict[str, str] = {}
         for td in truth_deletions:
             t_start = iso_to_us(td["start_device"])
             t_end = iso_to_us(td["end_device"])
+            channel = td["channel"]
             match = None
+            match_kind = "no match"
             for ad in api_deletions:
-                if ad["channel"] is not None and ad["channel"] != td["channel"]:
+                if ad["channel"] is not None and ad["channel"] != channel:
                     continue
                 if ad["start_ts_us"] <= t_end and t_start <= ad["end_ts_us"]:
                     match = ad
+                    match_kind = "time-window overlap"
                     break
+            if (
+                match is None
+                and len(truth_by_channel.get(channel, [])) == 1
+                and len(api_by_channel.get(channel, [])) == 1
+            ):
+                match = api_by_channel[channel][0]
+                match_kind = (
+                    "channel-unique fallback (exactly one truth deletion and one API "
+                    "finding on this channel; no time-window overlap)"
+                )
+            match_methodology[f"ch{channel}"] = match_kind
             if match is not None and match["method"] == td["method"]:
                 method_correct += 1
             if td.get("actor") is not None:
@@ -514,7 +556,11 @@ def process_image(
                     actor_correct += 1
         result.metrics["deletion_method"] = Metric(
             value=method_correct / len(truth_deletions),
-            detail={"correct": method_correct, "total": len(truth_deletions)},
+            detail={
+                "correct": method_correct,
+                "total": len(truth_deletions),
+                "match_methodology": match_methodology,
+            },
         )
         if actor_checked:
             result.metrics["deletion_actor"] = Metric(
@@ -736,34 +782,74 @@ def process_image(
         result.metrics["playable_clips"] = na("no live (non-deleted) recordings to export")
 
     # --- determinism ------------------------------------------------------
-    # The natural way to test CLAUDE.md rule 5 ("same input + same version
-    # = byte-identical outputs") over the public API is to independently
-    # register + scan the *same* evidence bytes into a second case and
-    # compare the resulting frames/recordings/deletions. That is blocked by
-    # a discovered BACKEND bug: evidence lookup-by-id
-    # (`apps/api/pramaan_api/real/store.py::_find_case_for_evidence`)
-    # resolves a content-derived `evidence_id` to a case by scanning
-    # `iter_case_ids()` and returning the *first* (sorted) case that has a
-    # row for that id — not the case the caller actually registered it
-    # under. Once the same image content is registered into two cases (as
-    # this check would require), every subsequent `/evidence/{id}/...`
-    # call for that id (scan, verify, fingerprint, inferred-layout) is
-    # silently rerouted to whichever case sorts first, not the one the
-    # caller meant. Confirmed by direct repro (two cases, same evidence
-    # bytes): both scan jobs ended up scoped to the same case_id, and the
-    # second job's stages all reported "skipped (already done for this
-    # input)" even though it was a logically independent scan. See
-    # "Cross-workstream issues" — not fixed here (apps/api is BACKEND's).
+    # CLAUDE.md rule 5 ("same input + same version = byte-identical
+    # outputs"), tested the way task FIX-4's case-scoped routes make
+    # possible: register the SAME evidence bytes into a second, independent
+    # case ("VAL-DET-<name>") and scan it there too, via the case-scoped
+    # `POST /cases/{cid}/evidence/{eid}/scan` (not the global
+    # `/evidence/{eid}/scan`, which is ambiguous once the same
+    # content-derived evidence_id exists in two cases — FIX-4's own fix for
+    # this exact ambiguity is what this check now exercises). Every id
+    # inside a case (evidence/recording/deletion/clock-model/frame/vendor
+    # -match) is content-derived from image_id, never case_id
+    # (packages/core/pramaan_core/ids.py::content_id, used consistently
+    # across packages/formats, packages/recovery, packages/logs,
+    # packages/timeline, apps/worker/pramaan_worker/stages.py), so the two
+    # cases' independently-scanned pipeline output should be byte-for-byte
+    # identical even though the two cases' own identity (case id/number)
+    # and custody chains (each case's own append-only audit/anchor log) are
+    # legitimately, by design, different.
     #
-    # Same-case idempotent re-run (marker-file skip, docs/02-BACKEND.md
-    # §6) *is* safely testable and is a real, if weaker, signal: it
-    # confirms re-running produces the same stored findings rather than
-    # silently drifting or duplicating.
+    # report_sha256 hashes the *whole* manifest, including those
+    # case-identity/custody/anchor sections (packages/reporting
+    # /pramaan_reporting/manifest.py::build_manifest), so two reports from
+    # two different cases never share one report_sha256 even when the
+    # underlying evidence and every derived finding are identical —
+    # apps/api/pramaan_api/real/report_store.py's own docstring documents
+    # this. Equivalence rule (documented in docs/VALIDATION.md): two
+    # reports are "deterministic" if their manifests agree on every
+    # pipeline-derived content section (evidence/vendor_matches/methods
+    # /recordings_summary/deletion_findings/clock_observations/log_events
+    # /accepted_ai_drafts/limitations) — case/examiner/custody/anchors are
+    # excluded from that comparison on purpose, and report_sha256 itself is
+    # correctly expected to differ across the two cases.
     try:
-        rerun_job = api.run_job(client, evidence_id, "scan")
-        rerun_job = api.poll_job(client, rerun_job["id"], deadline)
-        rerun_recordings = api.get_json(client, f"/api/cases/{case_id}/recordings") or []
-        rerun_deletions = api.get_json(client, f"/api/cases/{case_id}/deletions") or []
+        det_case = api.get_or_create_case(
+            client, f"VAL-DET-{name}", f"QA determinism check: {name}", CASE_LAB
+        )
+        det_case_id = det_case["id"]
+        det_evidence = api.register_evidence(
+            client,
+            det_case_id,
+            image_path,
+            f"validation image {name} (determinism copy)",
+            intake,
+        )
+        det_evidence_id = det_evidence["id"]
+        evidence_id_stable = det_evidence_id == evidence_id
+
+        det_job = api.run_job_in_case(client, det_case_id, det_evidence_id, "scan")
+        det_job = api.poll_job(client, det_job["id"], deadline)
+
+        det_recordings = api.get_json(client, f"/api/cases/{det_case_id}/recordings") or []
+        det_deletions = api.get_json(client, f"/api/cases/{det_case_id}/deletions") or []
+        det_clock_models = api.get_json(client, f"/api/cases/{det_case_id}/clock-models") or []
+        try:
+            det_matches = (
+                api.get_json(client, f"/api/evidence/{det_evidence_id}/fingerprint") or []
+            )
+        except httpx.HTTPStatusError:
+            det_matches = []
+        det_frames_all: list[dict[str, Any]] = []
+        for ch in channels:
+            for source in ("index", "carved", "inferred"):
+                try:
+                    page, _, _ = api.fetch_all_frames(
+                        client, f"/api/cases/{det_case_id}", channel=ch, source=source
+                    )
+                except httpx.HTTPStatusError:
+                    page = []
+                det_frames_all.extend(page)
 
         def _rec_key(r: dict[str, Any]) -> tuple[Any, ...]:
             return (r["channel"], r["source"], r["start_ts_us"], r["end_ts_us"], r["deleted"])
@@ -771,21 +857,136 @@ def process_image(
         def _del_key(d: dict[str, Any]) -> tuple[Any, ...]:
             return (d["channel"], d["method"], d["actor"], d["start_ts_us"], d["end_ts_us"])
 
-        stable = {_rec_key(r) for r in api_recordings} == {
-            _rec_key(r) for r in rerun_recordings
-        } and {_del_key(d) for d in api_deletions} == {_del_key(d) for d in rerun_deletions}
-        result.metrics["determinism"] = na(
-            "cannot be measured via the public API — a BACKEND evidence-resolution bug "
-            "(apps/api/pramaan_api/real/store.py::_find_case_for_evidence, see "
-            "Cross-workstream issues) makes registering the same evidence content into a "
-            "second case unreliable. Weaker same-case idempotent re-run check: "
-            f"stable={stable}, rerun_status={rerun_job['status']}"
+        def _frame_key(f: dict[str, Any]) -> tuple[Any, ...]:
+            return (
+                f["channel"],
+                f["source"],
+                f["frame_type"],
+                f["payload_offset"],
+                f.get("frame_id"),
+                f.get("ts_header_us"),
+                f.get("ts_index_us"),
+                bool(f.get("deleted")),
+            )
+
+        recordings_match = sorted(map(_rec_key, api_recordings)) == sorted(
+            map(_rec_key, det_recordings)
+        )
+        deletions_match = sorted(map(_del_key, api_deletions)) == sorted(
+            map(_del_key, det_deletions)
+        )
+        frames_match = sorted(map(_frame_key, api_frames_all)) == sorted(
+            map(_frame_key, det_frames_all)
+        )
+        clock_models_match = clock_models == det_clock_models
+        vendor_matches_match = matches == det_matches
+
+        layout_match: bool | None = None
+        if hidden_layout is not None:
+            try:
+                det_layout = api.get_json(
+                    client, f"/api/evidence/{det_evidence_id}/inferred-layout"
+                )
+            except httpx.HTTPStatusError:
+                det_layout = None
+            layout_match = layout is not None and det_layout is not None and layout == det_layout
+
+        # Report manifests: generate one in each case, compare content
+        # sections (see block comment above for what's excluded and why).
+        report_a_resp = client.post(
+            f"/api/cases/{case_id}/reports", json={}, headers=api.csrf_headers(client)
+        )
+        report_b_resp = client.post(
+            f"/api/cases/{det_case_id}/reports", json={}, headers=api.csrf_headers(client)
+        )
+        report_a_resp.raise_for_status()
+        report_b_resp.raise_for_status()
+        manifest_a = api.get_json(
+            client, f"/api/reports/{report_a_resp.json()['id']}/manifest"
+        )
+        manifest_b = api.get_json(
+            client, f"/api/reports/{report_b_resp.json()['id']}/manifest"
+        )
+        manifest_a_reread = api.get_json(
+            client, f"/api/reports/{report_a_resp.json()['id']}/manifest"
+        )
+        _CONTENT_SECTIONS = (
+            "evidence",
+            "vendor_matches",
+            "methods",
+            "recordings_summary",
+            "deletion_findings",
+            "clock_observations",
+            "log_events",
+            "accepted_ai_drafts",
+            "limitations",
+        )
+
+        def _content_section(m: dict[str, Any], key: str) -> Any:
+            val = m.get(key)
+            if key == "evidence" and isinstance(val, list):
+                # acquired_utc (packages/core/pramaan_core/acquire.py) is a
+                # wall-clock registration timestamp, stamped fresh each time
+                # an image is first registered into a *case* (INSERT OR
+                # IGNORE in apps/api/pramaan_api/real/store.py::
+                # register_evidence makes it stable across re-registration
+                # into the SAME case, but this check deliberately registers
+                # into two *different* cases, each doing its own real
+                # first-time intake) — same category as the case/custody/
+                # anchor sections already excluded below: legitimate
+                # per-case provenance, not pipeline output, so excluded
+                # from the content-equivalence comparison.
+                return [{k2: v2 for k2, v2 in e.items() if k2 != "acquired_utc"} for e in val]
+            return val
+
+        report_content_match = all(
+            _content_section(manifest_a, k) == _content_section(manifest_b, k)
+            for k in _CONTENT_SECTIONS
+        )
+        report_sha256_equal_across_cases = manifest_a.get("report_sha256") == manifest_b.get(
+            "report_sha256"
+        )
+        report_readback_stable = manifest_a == manifest_a_reread
+
+        overall = (
+            evidence_id_stable
+            and recordings_match
+            and deletions_match
+            and frames_match
+            and clock_models_match
+            and vendor_matches_match
+            and (layout_match is not False)
+            and report_content_match
+            and report_readback_stable
+        )
+        result.metrics["determinism"] = Metric(
+            value=overall,
+            detail={
+                "evidence_id_stable": evidence_id_stable,
+                "recordings_match": recordings_match,
+                "deletions_match": deletions_match,
+                "frames_match": frames_match,
+                "clock_models_match": clock_models_match,
+                "vendor_matches_match": vendor_matches_match,
+                "inferred_layout_match": layout_match,
+                "report_content_sections_match": report_content_match,
+                "report_sha256_equal_across_cases (expected False by design)": (
+                    report_sha256_equal_across_cases
+                ),
+                "report_readback_stable": report_readback_stable,
+                "methodology": (
+                    "two independent register+scan runs of identical evidence bytes in two "
+                    f"separate cases ({case_number} and VAL-DET-{name}), via task FIX-4's "
+                    "case-scoped /cases/{cid}/evidence/{eid}/scan route. Pipeline-derived "
+                    "content compared directly (all content-id-keyed by image_id, not "
+                    "case_id); report manifests compared with case-identity/custody/anchor "
+                    "sections excluded (those legitimately differ per case by design) — see "
+                    "docs/VALIDATION.md for the equivalence rule."
+                ),
+            },
         )
     except (httpx.HTTPStatusError, api.ApiError) as exc:
-        result.metrics["determinism"] = na(
-            f"cannot be measured via the public API (see reason above); same-case re-run also "
-            f"failed: {exc}"
-        )
+        result.metrics["determinism"] = na(f"determinism check failed to run: {exc}")
 
     # --- read-only guarantee: hash_verify job must confirm the sha256 ----
     try:
@@ -930,6 +1131,45 @@ def write_markdown(
     )
     lines.append("")
 
+    lines.append("## Methodology notes / equivalence rules (task FIX-11)")
+    lines.append("")
+    lines.append(
+        "- **Determinism** registers the identical evidence bytes into a second, independent "
+        "case and scans it there too (task FIX-4's case-scoped `/cases/{cid}/evidence/{eid}"
+        "/scan`), then compares every piece of pipeline-derived content (recordings, deletion "
+        "findings, frames, clock models, vendor matches, inferred layout — all content-id-keyed "
+        "by image_id, never case_id) directly, plus each case's own generated report manifest "
+        "with case-identity/custody/anchor sections excluded. Two report manifests' `evidence` "
+        "sections are also compared with `acquired_utc` excluded (a wall-clock registration "
+        "timestamp, stamped fresh on each case's own first-time intake of the bytes — the same "
+        "category as the excluded case/custody/anchor fields, not pipeline output). "
+        "`report_sha256` itself is correctly expected to differ across the two cases (it hashes "
+        "the whole manifest, case-identity fields included) — this is by design, not a "
+        "determinism failure; see the per-image `determinism` detail's methodology note."
+    )
+    lines.append(
+        "- **Deletion method/actor matching**: a truth deletion is matched to an API finding by "
+        "channel + time-window overlap, with one fallback — when a channel has exactly one "
+        "truth deletion and the API reports exactly one finding on that channel, they are "
+        "treated as the same event even without a time-window overlap. This matters for a "
+        "genuine `overwrite` scenario: once bytes are truly overwritten, the original window "
+        "is gone forever and CORE's own analyzer honestly estimates a replacement window from "
+        "whatever survives nearby (its finding's own `reasons` say so) rather than fabricating "
+        "false precision — scoring `method` correctness against a window ground truth can't "
+        "expect CORE to reproduce exactly would penalise that honesty, not a wrong verdict."
+    )
+    lines.append(
+        "- **XSIM inference field equivalence**: none accepted this run — the `length`/"
+        "`sequence` field mismatches on both XSIM images are a genuine width underestimate "
+        "(the inferred field decodes a different value than truth's wider field would for any "
+        "value outside this corpus's observed range), not a convention difference a reasonable "
+        "reader would call equivalent; see \"Cross-workstream issues\"-adjacent discussion in "
+        "docs/progress/FIX-11.md for the abstract root-cause description (CORE's blind-"
+        "inference algorithm must never be told the actual hidden layout — docs/01-FORENSIC"
+        "-CORE.md §4.6)."
+    )
+    lines.append("")
+
     lines.append("## Per-image detail")
     lines.append("")
     for r in results:
@@ -1035,38 +1275,37 @@ def main() -> int:
 
     proc = api.start_api(REPO_ROOT, DATA_DIR, [CORPUS_IMAGES], port, log_path)
     results: list[ImageResult] = []
+    # Two previously-hardcoded static entries were removed here (task FIX-11):
+    # the evidence-to-case resolution ambiguity and the export-creation 500
+    # were both real bugs found by earlier validation runs, but both are
+    # fixed now (task FIX-4: case-scoped /cases/{cid}/evidence/{eid}/scan|
+    # verify routes for the former; a caught ExportMuxError -> 422 for the
+    # latter) — see docs/progress/FIX-4.md. One NEW confirmed bug is added
+    # below in its place (task FIX-11): it explains why xsim_format/
+    # xsim_unknown's `deletion_method`/`deletion_actor` still can't be
+    # scored via the public API even though packages/recovery's own
+    # verdict logic is correct (docs/progress/FIX-7.md) — the rest of this
+    # list is populated purely from what THIS run actually observes below.
     cross_workstream_issues: list[str] = [
-        "BACKEND (apps/api/pramaan_api/real/store.py::_find_case_for_evidence): evidence "
-        "lookup-by-id resolves a content-derived evidence_id to a case by scanning "
-        "iter_case_ids() (sorted case dir names) and returning the first case with a matching "
-        "evidence_images row — not the case the caller actually registered/scanned it under. "
-        "Repro: register the same file (identical bytes -> identical content-derived "
-        "evidence_id) into case A then case B, then POST /evidence/{id}/scan for each — both "
-        "jobs resolve to the SAME case_id (whichever sorts first), and the second job's stages "
-        "all report 'skipped (already done for this input)' even though it should be an "
-        "independent scan of case B. Confirmed directly against hiksim_format.img: job1 and "
-        "job2 returned job['case_id'] == the same case, though they were POSTed against two "
-        "different evidence registrations in two different cases. This blocks this harness's "
-        "'determinism' metric (which needs two independent scans of the same bytes) from being "
-        "measured via the public API; see each image's 'determinism' row below. Not fixed here "
-        "— apps/api is BACKEND's path, not QA's.",
-        "BACKEND/CORE (packages/export/pramaan_export/mux.py:remux_stream_copy, via "
-        "apps/api/pramaan_api/real/export_store.py:create_export -> "
-        "packages/export/pramaan_export/builder.py:build_export): creating a signed export "
-        "for at least one live recording of EITHER hwsim_format.img OR hwsim_overwrite.img "
-        "raises an uncaught pramaan_export.mux.ExportMuxError ('ffmpeg remux failed (exit "
-        "234) ... non-existing PPS 0 referenced') from POST /cases/{cid}/exports, returning "
-        "HTTP 500 instead of a clean 4xx. Root cause: at least one HWSIM recording's carved "
-        "frame stream starts mid-GOP without a valid SPS/PPS, which ffmpeg's stream-copy "
-        "remux cannot handle. NOTE: an equivalent crash used to happen one layer up, in the "
-        "scan pipeline's own 'clips' stage (apps/worker/pramaan_worker/stages.py) — that one "
-        "has since been fixed to catch the error and skip the affected recording instead of "
-        "crashing the whole scan job (observed across two validate.py runs on 2026-09-30: "
-        "same-day, a concurrent BACKEND/CORE fix landed mid-session). The export-creation "
-        "path (packages/export) still has the same unguarded call and was not covered by "
-        "that fix. Effect: every HWSIM image's 'playable_clips' metric below is 0% (every "
-        "export attempt 500s). Not fixed here — packages/export and apps/api are BACKEND's "
-        "paths, not QA's.",
+        "BACKEND (apps/api/pramaan_api/real/pipeline_store.py::_reindex_confirmed_layout): "
+        "confirming a Tier B/inferred layout (POST /inferred-layouts/{lid}/confirm) re-runs "
+        "parse_inferred_layout, frame_index and clips (populating the `recordings` table for "
+        "the image) but never re-runs deletion_verdict — so `GET /cases/{cid}/deletions` "
+        "stays exactly what it was computed as during the automatic /scan (deletion_verdict "
+        "ran there with an empty `recordings` table for any Tier B image, since recordings "
+        "are only populated by confirmation, which happens later/on demand), forever, "
+        "regardless of confirmation. Repro (confirmed directly against xsim_format.img this "
+        "run): register+scan -> GET .../recordings returns 0 rows, GET .../deletions returns "
+        "[]; POST /inferred-layouts/{lid}/confirm -> 200; GET .../recordings now returns 12 "
+        "rows (the confirm-triggered reindex worked); GET .../deletions still returns [] "
+        "(expected: 4 findings, one per channel, method='format' per "
+        "docs/progress/FIX-7.md's own direct-core-level test of this exact image). This is "
+        "why this harness's deletion_method/deletion_actor metrics score 0%/not-available for "
+        "both XSIM images even after task FIX-11's matching-logic fix (which resolved a "
+        "separate, harness-side issue on hwsim_overwrite) — there is nothing in the API "
+        "response to match against. Not fixed here (apps/api is BACKEND's path); the fix is "
+        "presumably adding deletion_verdict to _reindex_confirmed_layout's stage list, "
+        "mirroring what the automatic /scan pipeline already does at stage 8.",
     ]
     try:
         try:

@@ -167,6 +167,31 @@ def run_job(client: httpx.Client, evidence_id: str, kind: str) -> dict[str, Any]
     return dict(resp.json())
 
 
+def run_job_in_case(
+    client: httpx.Client, case_id: str, evidence_id: str, kind: str
+) -> dict[str, Any]:
+    """Case-scoped counterpart to :func:`run_job` (task FIX-4's additive
+    ``POST /cases/{cid}/evidence/{eid}/{scan,verify}`` routes). Needed
+    whenever the *same* content-derived ``evidence_id`` is registered into
+    more than one case (e.g. this harness's determinism check) — the global
+    ``/evidence/{eid}/{kind}`` route has no ``{cid}`` in its path at all and
+    silently resolves to whichever case sorts first
+    (``apps/api/pramaan_api/real/store.py::_find_case_for_evidence``), which
+    is exactly the ambiguity a determinism check must avoid.
+    """
+    resp = client.post(
+        f"/api/cases/{case_id}/evidence/{evidence_id}/{kind}",
+        json={},
+        headers=csrf_headers(client),
+    )
+    if resp.status_code >= 400:
+        raise ApiError(
+            f"{kind} of {evidence_id} in case {case_id} failed to queue: "
+            f"{resp.status_code} {resp.text}"
+        )
+    return dict(resp.json())
+
+
 def poll_job(client: httpx.Client, job_id: str, deadline: float) -> dict[str, Any]:
     while True:
         resp = client.get(f"/api/jobs/{job_id}")
@@ -209,35 +234,40 @@ def fetch_all_frames(
     client: httpx.Client, cases_path: str, *, channel: int, source: str, page_limit: int = 500
 ) -> tuple[list[dict[str, Any]], int, bool]:
     """Every frame for one ``(channel, source)`` combination on
-    ``GET {cases_path}/frames``, walking multiple pages via a ``ts_header_us``
-    cursor (``from``) when the true count exceeds ``page_limit`` (task
-    FIX-1's ``X-Total-Count`` header makes the true count knowable; there is
-    no offset/cursor param otherwise). Frames are deduplicated by
-    ``payload_offset`` (harmless — the cursor is inclusive, to never skip
-    rows tied at the same ``ts_header_us``).
+    ``GET {cases_path}/frames``, walking multiple pages via the ``offset``
+    query param (task FIX-4, additive alongside the pre-existing ``from``/
+    ``to`` ``ts_header_us`` cursor). ``offset`` pages over the response's
+    fixed, stable sort order (``channel, ts_header_us, payload_offset`` —
+    docs/02-BACKEND.md §4) rather than filtering on ``ts_header_us`` itself,
+    so it reaches every row regardless of whether it has a device-clock
+    timestamp — unlike the ``from`` cursor, which docs/02-BACKEND.md §4's
+    ``frm`` clause excludes null-``ts_header_us`` rows from, and so could
+    never page past an all-NULL page (e.g. XSIM's generic carve pass, which
+    has no vendor header to read a timestamp from at all; this was a real,
+    now-fixed truncation on ``xsim_format``/channel 1/``carved``, 776 rows
+    with only 500 reachable via the old cursor-only approach). Frames are
+    deduplicated by ``payload_offset`` (harmless).
 
     Returns ``(frames, total_count, truncated)``; ``truncated`` is true only
-    if the server-reported total could not be fully retrieved (e.g. many
-    frames share one ``ts_header_us`` and/or lack one entirely, which the
-    ``from`` filter can't page past — docs/02-BACKEND.md §4's ``frm``
-    clause excludes null-timestamp rows from any windowed page after the
-    first).
+    if the server-reported total could not be fully retrieved even with
+    ``offset`` (i.e. a genuine API-side gap, not this client's own paging
+    logic).
     """
     collected: dict[int, dict[str, Any]] = {}
-    cursor: int | None = None
     total = 0
-    for _ in range(200):  # safety cap against a pathological non-advancing cursor
-        params: dict[str, Any] = {"channel": channel, "source": source, "limit": page_limit}
-        if cursor is not None:
-            params["from"] = cursor
+    offset = 0
+    for _ in range(400):  # safety cap against a pathological non-advancing offset
+        params: dict[str, Any] = {
+            "channel": channel,
+            "source": source,
+            "limit": page_limit,
+            "offset": offset,
+        }
         page, total = get_json_with_total(client, f"{cases_path}/frames", **params)
         page = page or []
         for f in page:
             collected[f["payload_offset"]] = f
-        if len(page) < page_limit:
+        offset += len(page)
+        if len(page) < page_limit or offset >= total:
             break
-        last_ts = page[-1].get("ts_header_us")
-        if last_ts is None or (cursor is not None and last_ts <= cursor):
-            break
-        cursor = last_ts
     return list(collected.values()), total, len(collected) < total
