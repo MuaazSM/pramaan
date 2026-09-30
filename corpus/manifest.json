@@ -6,6 +6,10 @@
       "name": "dhsim_expiry",
       "path": "corpus/images/dhsim_expiry.img",
       "scenario": "expiry",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T16:30:36",
+        "reference": "2026-03-12T16:30:36+05:30"
+      },
       "sha256": "768a098b09b0a79eb5125cd77d063fa09983892baf708e35aa7c5913c6898a2e",
       "size_bytes": 1620331
     },
@@ -14,6 +18,10 @@
       "name": "dhsim_format",
       "path": "corpus/images/dhsim_format.img",
       "scenario": "format",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T16:36:28",
+        "reference": "2026-03-12T16:36:28+05:30"
+      },
       "sha256": "89d0b564b0dbe05566cdec531b60a30ee245f4dfe2719d16724b6fe5a58edbaf",
       "size_bytes": 1071564
     },
@@ -22,6 +30,10 @@
       "name": "gensim_carve",
       "path": "corpus/images/gensim_carve.img",
       "scenario": "n/a",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T16:30:08",
+        "reference": "2026-03-12T16:30:08+05:30"
+      },
       "sha256": "4f7c9aae870a5815c0ae753dcf995579ad08cfb96f884a47b3eb2118bece9996",
       "size_bytes": 541646
     },
@@ -30,6 +42,10 @@
       "name": "hiksim_clean",
       "path": "corpus/images/hiksim_clean.img",
       "scenario": "none",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T16:30:24",
+        "reference": "2026-03-12T16:30:24+05:30"
+      },
       "sha256": "6e7d14e65b8c11db46c1907b738bab95e955654d26daaf3b863eed38db76c8a7",
       "size_bytes": 8400896
     },
@@ -38,6 +54,10 @@
       "name": "hiksim_clockchange",
       "path": "corpus/images/hiksim_clockchange.img",
       "scenario": "none+time_change+osd_drift",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T14:30:24",
+        "reference": "2026-03-12T15:30:24+05:30"
+      },
       "sha256": "6aa3216d000dcf3032b64aea6d1acbf13e740c613c4e4ab5600b8162651d28b3",
       "size_bytes": 8400896
     },
@@ -46,6 +66,10 @@
       "name": "hiksim_format",
       "path": "corpus/images/hiksim_format.img",
       "scenario": "format",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T16:36:28",
+        "reference": "2026-03-12T16:36:28+05:30"
+      },
       "sha256": "d26df78bc79830b49add3fb6aa60f429350d04a600535b4666b395d4c1fbb821",
       "size_bytes": 8400896
     },
@@ -54,6 +78,10 @@
       "name": "hwsim_format",
       "path": "corpus/images/hwsim_format.img",
       "scenario": "format",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T16:37:18",
+        "reference": "2026-03-12T16:37:18+05:30"
+      },
       "sha256": "7f6c1175ca88abc899d08171f3556907bc64c30f12f056aaa086c89594c469f3",
       "size_bytes": 4776960
     },
@@ -62,6 +90,10 @@
       "name": "hwsim_overwrite",
       "path": "corpus/images/hwsim_overwrite.img",
       "scenario": "overwrite",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T16:33:24",
+        "reference": "2026-03-12T16:33:24+05:30"
+      },
       "sha256": "79e72f07fa3fb326f100ecd2d6361bfa70cd2243b586355bb941a1bcff34433c",
       "size_bytes": 5047296
     },
@@ -70,6 +102,10 @@
       "name": "xsim_format",
       "path": "corpus/images/xsim_format.img",
       "scenario": "format",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T16:37:21",
+        "reference": "2026-03-12T16:37:21+05:30"
+      },
       "sha256": "a89e486b556254620fee5218ad21fbb75097740b583c103ecb516cb0ea3e6154",
       "size_bytes": 703387
     },
@@ -78,6 +114,10 @@
       "name": "xsim_unknown",
       "path": "corpus/images/xsim_unknown.img",
       "scenario": "none",
+      "seizure": {
+        "dvr_displayed": "2026-03-12T16:31:14",
+        "reference": "2026-03-12T16:31:14+05:30"
+      },
       "sha256": "5c7ac94889a960b7644c30d8eb41e3557013a284511ff6ba8d82ee06d7ca3c60",
       "size_bytes": 711960
     }

@@ -36,8 +36,19 @@ def write_manifest(
     manifest_path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
 
 
-def image_entry(name: str, family: str, scenario: str, path: Path) -> dict[str, Any]:
+def image_entry(
+    name: str, family: str, scenario: str, path: Path, truth_dir: Path
+) -> dict[str, Any]:
+    """One `corpus/manifest.json` entry.
+
+    FIX-6: also carries this image's seizure record (`{"dvr_displayed":
+    ..., "reference": ...}`, read from `corpus/truth/<image>.json`) so
+    `tools/demo/demo.py` and the validation harness can register each
+    image with its own, per-image seizure values instead of one constant
+    applied to every image.
+    """
     data = path.read_bytes()
+    truth_doc = json.loads((truth_dir / f"{name}.json").read_text())
     return {
         "name": name,
         "family": family,
@@ -45,4 +56,5 @@ def image_entry(name: str, family: str, scenario: str, path: Path) -> dict[str, 
         "path": f"corpus/images/{path.name}",
         "sha256": hashlib.sha256(data).hexdigest(),
         "size_bytes": len(data),
+        "seizure": truth_doc["seizure"],
     }

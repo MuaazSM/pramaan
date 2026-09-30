@@ -26,11 +26,11 @@ from pramaan_synthdvr import pes
 from pramaan_synthdvr.binutil import fixed_str, put, u8, u16, u32, u64
 from pramaan_synthdvr.scenario import (
     DEFAULT_OSD_DRIFT_S,
-    SEIZURE_DEVICE_OFFSET_S,
     TRUE_EPOCH_S,
     default_channels,
     iso,
     seed_for,
+    seizure_offset_us,
     us,
 )
 from pramaan_synthdvr.truth import TruthBuilder, TruthFrame
@@ -548,13 +548,6 @@ def build_image(
             }
         )
 
-    seizure_true_s = (gen2[-1].device_end_s if gen2 else gen1[-1].device_end_s) + 3600.0
-    ist = timezone(timedelta(hours=5, minutes=30))
-    ref_dt = datetime.fromtimestamp(seizure_true_s, tz=ist)
-    truth.seizure_reference = ref_dt.strftime("%Y-%m-%dT%H:%M:%S+05:30")
-    disp_dt = ref_dt + timedelta(seconds=SEIZURE_DEVICE_OFFSET_S)
-    truth.seizure_dvr_displayed = disp_dt.strftime("%Y-%m-%dT%H:%M:%S")
-
     if scenario == "clockchange":
         boundary_ts = next(
             r.device_start_s for r in gen1 if r.rec_index == time_change_boundary_rec_index
@@ -580,6 +573,16 @@ def build_image(
                 "offset_true_to_device_us": 0,
             }
         ]
+
+    # FIX-6: seizure displayed time = reference time + the device offset
+    # actually baked into this image's last (open-ended) clock segment —
+    # see pramaan_synthdvr.scenario.seizure_offset_us.
+    seizure_true_s = (gen2[-1].device_end_s if gen2 else gen1[-1].device_end_s) + 3600.0
+    ist = timezone(timedelta(hours=5, minutes=30))
+    ref_dt = datetime.fromtimestamp(seizure_true_s, tz=ist)
+    truth.seizure_reference = ref_dt.strftime("%Y-%m-%dT%H:%M:%S+05:30")
+    disp_dt = ref_dt + timedelta(microseconds=seizure_offset_us(truth.clock_segments))
+    truth.seizure_dvr_displayed = disp_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
     images_dir.mkdir(parents=True, exist_ok=True)
     out_path = images_dir / f"{name}.img"

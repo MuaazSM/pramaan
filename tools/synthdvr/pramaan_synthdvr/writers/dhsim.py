@@ -16,11 +16,11 @@ from typing import Any
 
 from pramaan_synthdvr.binutil import fixed_str, put, u16, u32, u64
 from pramaan_synthdvr.scenario import (
-    SEIZURE_DEVICE_OFFSET_S,
     TRUE_EPOCH_S,
     default_channels,
     iso,
     seed_for,
+    seizure_offset_us,
     us,
 )
 from pramaan_synthdvr.truth import TruthBuilder, TruthFrame
@@ -469,7 +469,7 @@ def build_image(
     ist = timezone(timedelta(hours=5, minutes=30))
     ref_dt = datetime.fromtimestamp(seizure_true_s, tz=ist)
     truth.seizure_reference = ref_dt.strftime("%Y-%m-%dT%H:%M:%S+05:30")
-    disp_dt = ref_dt + timedelta(seconds=SEIZURE_DEVICE_OFFSET_S)
+    disp_dt = ref_dt + timedelta(microseconds=seizure_offset_us(truth.clock_segments))
     truth.seizure_dvr_displayed = disp_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
     images_dir.mkdir(parents=True, exist_ok=True)

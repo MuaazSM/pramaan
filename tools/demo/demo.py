@@ -117,18 +117,46 @@ STRICT_IMAGES = {"hiksim_format", "dhsim_format", "hwsim_format"}
 # is best-effort (task FIX-1's real-mode confirm route).
 BEST_EFFORT_IMAGES = {"xsim_unknown"}
 
-# Fixed, deterministic SWGDE intake (CLAUDE.md rule 5: determinism — no
-# wall-clock values). Mirrors corpus/truth/hiksim_format.json's seizure
-# block (docs/05-INFRA-QA.md §4.4).
-INTAKE: dict[str, str] = {
-    "seized_at_local": "2026-03-12T16:40:00+05:30",
-    "dvr_displayed_time": "2026-03-12T16:41:40",
-    "reference_time": "2026-03-12T16:36:28+05:30",
+# Fixed, deterministic SWGDE intake fields common to every image (CLAUDE.md
+# rule 5: determinism — no wall-clock values).
+INTAKE_EXTRAS: dict[str, str] = {
     "reference_source": "NTP phone clock",
     "timezone": "Asia/Kolkata",
     "write_blocker": "Tableau T35u",
     "notes": "just demo: seeded via tools/demo/demo.py",
 }
+
+MANIFEST_PATH = REPO_ROOT / "corpus" / "manifest.json"
+
+
+def load_manifest_seizures() -> dict[str, dict[str, str]]:
+    """``{image_name: {"dvr_displayed": ..., "reference": ...}}`` from
+    ``corpus/manifest.json`` (FIX-6: each corpus image's seizure record —
+    ``corpus/synthdvr``'s ground truth, exposed per-image on the manifest —
+    so registration below passes each image's *own* seizure values at
+    intake instead of one constant applied to every image, which used to
+    disagree with several images' baked-in device clocks; see
+    docs/progress/FIX-6.md)."""
+    try:
+        doc = json.loads(MANIFEST_PATH.read_text())
+        return {img["name"]: img["seizure"] for img in doc["images"]}
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        raise DemoError(
+            f"could not read seizure records from {MANIFEST_PATH} ({exc!r}) — run `just corpus`"
+        ) from exc
+
+
+def intake_for(name: str, seizures: dict[str, dict[str, str]]) -> dict[str, str]:
+    seizure = seizures.get(name)
+    if seizure is None:
+        raise DemoError(f"corpus/manifest.json has no seizure record for image {name!r}")
+    return {
+        "seized_at_local": seizure["reference"],
+        "dvr_displayed_time": seizure["dvr_displayed"],
+        "reference_time": seizure["reference"],
+        **INTAKE_EXTRAS,
+    }
+
 
 CSRF_COOKIE_NAME = "pramaan_csrf"
 CSRF_HEADER_NAME = "x-csrf-token"
@@ -263,11 +291,11 @@ def get_or_create_case(client: httpx.Client) -> dict[str, Any]:
 
 
 def register_evidence(
-    client: httpx.Client, case_id: str, image_path: Path, label: str
+    client: httpx.Client, case_id: str, image_path: Path, label: str, intake: dict[str, str]
 ) -> dict[str, Any]:
     resp = client.post(
         f"/api/cases/{case_id}/evidence",
-        json={"path": str(image_path), "label": label, "intake": INTAKE},
+        json={"path": str(image_path), "label": label, "intake": intake},
         headers=csrf_headers(client),
     )
     if resp.status_code >= 400:
@@ -557,6 +585,8 @@ def main() -> int:
         try:
             wait_healthy(base_url, proc, log_path, deadline)
 
+            seizures = load_manifest_seizures()
+
             with httpx.Client(base_url=base_url, timeout=30.0) as client:
                 login(client)
                 case = get_or_create_case(client)
@@ -584,7 +614,9 @@ def main() -> int:
                         continue
                     evidence_id: str | None = None
                     try:
-                        evidence = register_evidence(client, case_id, image_path, label)
+                        evidence = register_evidence(
+                            client, case_id, image_path, label, intake_for(name, seizures)
+                        )
                         evidence_id = evidence["id"]
                         print(f"demo: registered {name} -> evidence_id={evidence_id}")
                         job = run_scan(client, evidence_id)

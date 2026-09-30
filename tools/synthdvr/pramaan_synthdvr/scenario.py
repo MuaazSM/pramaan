@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
+from typing import Any
 
 from pramaan_synthdvr.video import ChannelSpec
 
@@ -29,13 +30,31 @@ def default_channels(width: int = 640, height: int = 360) -> list[ChannelSpec]:
     ]
 
 
-# docs/05-INFRA-QA.md §4.2: seizure default "device +5 min 12 s" ahead of
-# reference/true time.
-SEIZURE_DEVICE_OFFSET_S = 5 * 60 + 12
-
 # docs/05-INFRA-QA.md §4.2: "per-channel OSD drift (default channel 2 =
 # +37 s relative to device clock)".
 DEFAULT_OSD_DRIFT_S: dict[int, float] = {2: 37.0}
+
+
+def seizure_offset_us(clock_segments: list[dict[str, Any]]) -> int:
+    """The device clock's offset from true time *at the seizure instant*.
+
+    Physically: DVR displayed time at seizure = true (reference) time at
+    seizure + the device's offset at that instant — whatever the last
+    (open-ended, ``end_device: null``) clock segment says, since every
+    scripted clock event (e.g. ``time_change``) happens strictly before
+    the device is seized. Task FIX-6 (docs/VALIDATION.md "Cross-workstream
+    issues", Q3 finding): a previous version of this generator applied a
+    fixed ``SEIZURE_DEVICE_OFFSET_S = +312 s`` to every image's seizure
+    record regardless of what offset was actually baked into that image's
+    device timestamps (0 s for every scenario except
+    ``hiksim_clockchange``, which bakes in -3600 s after its scripted
+    clock-set-back) — so the seizure record disagreed with the disk's own
+    clock. This derives the seizure offset from the same ground truth the
+    frames themselves are stamped with, so the two can never disagree.
+    """
+    if not clock_segments:
+        return 0
+    return int(clock_segments[-1]["offset_true_to_device_us"])
 
 
 def seed_for(*parts: str) -> int:

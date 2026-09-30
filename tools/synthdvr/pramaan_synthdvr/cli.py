@@ -155,7 +155,7 @@ def build_all(
                 f"{name}: {size} bytes exceeds the small-profile limit "
                 f"({SMALL_PROFILE_LIMIT_BYTES} bytes)"
             )
-        entry = manifest.image_entry(name, family, scenario, path)
+        entry = manifest.image_entry(name, family, scenario, path, truth_dir)
         entries.append(entry)
         print(f"   ok: {size} bytes, sha256={entry['sha256']}", file=sys.stderr)
 
