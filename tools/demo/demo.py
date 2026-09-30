@@ -11,31 +11,47 @@ What this does, in order:
 3. Talks to it over plain HTTP (never imports API internals — this is a
    black-box smoke test of the real contract): logs in as
    ``examiner``/``demo``, creates case ``CR-2026-0412`` (reusing it if it
-   already exists), registers each demo evidence image via
-   ``POST /cases/{cid}/evidence`` (never opens/copies the image itself —
-   CLAUDE.md rule 1/2: only the API's own ``pramaan_core.acquire`` path
-   touches evidence bytes), runs the full scan pipeline job on each, and
-   waits for completion by polling ``GET /jobs/{jid}``.
-4. Prints a summary (recordings, recovered/deleted frames, stage
-   statuses) per evidence image.
-5. Stops the API subprocess, unless ``--keep-running`` was passed.
+   already exists), registers each demo evidence image (``hiksim_format``,
+   ``dhsim_format``, ``hwsim_format``, ``xsim_unknown`` — see
+   ``DEMO_EVIDENCE``) via ``POST /cases/{cid}/evidence`` (never opens/
+   copies the image itself — CLAUDE.md rule 1/2: only the API's own
+   ``pramaan_core.acquire`` path touches evidence bytes), runs the full
+   scan pipeline job on each, and waits for completion by polling
+   ``GET /jobs/{jid}``.
+4. Confirms ``xsim_unknown``'s inferred layout through the real API
+   (``POST /inferred-layouts/{lid}/confirm``, task FIX-1) — best-effort,
+   see ``try_confirm_inferred_layout``.
+5. Generates a signed report (PDF + BSA certificate) and one signed
+   export for the demo case (task B3's ``/cases/{cid}/reports`` and
+   ``/cases/{cid}/exports`` routes), then verifies the export via
+   ``POST /exports/verify``.
+6. Prints a summary (recordings, recovered/deleted frames, stage
+   statuses, report/export paths+hashes) per evidence image.
+7. Stops the API subprocess, unless ``--keep-running`` was passed.
 
 Idempotent and safe to re-run: case lookup is by ``case_number``, evidence
-ids are content-derived (registering the same image twice is a no-op), and
+ids are content-derived (registering the same image twice is a no-op),
 scan stages are resumable (a second scan on the same evidence skips every
-stage via its input-hash marker) — see ``docs/progress/B1.md``/``B2.md``.
+stage via its input-hash marker — see ``docs/progress/B1.md``/``B2.md``),
+exports are genuinely idempotent (task B3), and an existing report is
+reused rather than regenerated (see ``get_or_create_report``'s docstring
+for why report generation itself isn't content-idempotent by design).
 
 Usage::
 
     uv run python tools/demo/demo.py [--keep-running] [--timeout SECONDS] [--port PORT]
 
-Exits 0 on success (hiksim_format scanned, status "done", recordings > 0);
-non-zero otherwise, with a message on stderr.
+Exits 0 on success (``STRICT_IMAGES`` all scanned with status "done" and
+recordings > 0; a report and a verified signed export produced);
+non-zero otherwise, with a message on stderr. ``BEST_EFFORT_IMAGES`` are
+always attempted and always reported, but never gate the exit code — see
+that constant's docstring.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import socket
@@ -60,16 +76,46 @@ PASSWORD = "demo"
 
 # Evidence images registered by `just demo`, in order. Append a new
 # (image_stem, label) pair here to bring another corpus image into the
-# demo (e.g. xsim_unknown / hwsim_format once their pipeline stages are
-# wired) — nothing else in this script needs to change.
+# demo — nothing else in this script needs to change.
 DEMO_EVIDENCE: list[tuple[str, str]] = [
     ("hiksim_format", "DVR HDD, shop front, seized 12 Mar (Hikvision-format, deleted footage)"),
     ("dhsim_format", "DVR HDD, second unit (Dahua-format, deleted footage)"),
+    ("hwsim_format", "NVR disk, third unit (Honeywell-format GPT disk, deleted footage)"),
+    ("xsim_unknown", "Unlabelled DVR disk, fourth unit (unknown/Tier B format, needs inference)"),
 ]
 
-# The image that the Wave 2 gate cares about — its scan must succeed with
-# recordings > 0 for `just demo` to exit 0.
+# The image the original Wave 2 gate cared about — its scan must succeed
+# with recordings > 0 for `just demo` to exit 0 (kept for the exact wording
+# the acceptance check and tests/e2e/test_demo_flow.py already assert on).
 REQUIRED_IMAGE = "hiksim_format"
+
+# Images whose scan is required to fully succeed (job "done", recordings
+# > 0) for `just demo` to exit 0 — proven working end to end in real mode.
+# `hwsim_format` joined this set once its scan started reliably reaching
+# job "done" with recordings > 0 (the real HwsimParser's own index parse).
+# One remaining, non-blocking wrinkle (see docs/progress/FIX-2.md
+# "Cross-workstream issues"): its "clips" stage still can't remux a
+# playable clip for it. This is *not* a missing-bytes problem — the
+# on-disk image genuinely carries SPS/PPS NALs in-band, each behind its
+# own 20-byte header, immediately before every IDR access unit, exactly
+# per docs/01-FORENSIC-CORE.md §4.6 (confirmed by walking the raw bytes
+# directly). The gap is in `packages/formats/pramaan_formats/hwsim.py`'s
+# `HwsimParser.iter_frames`, which returns only the trailing slice NAL as
+# a live frame's payload, discarding the SPS/PPS/SEI NALs that precede it
+# on disk — not owned by this task. The stage now reports that
+# per-recording rather than crashing the whole scan request, which is why
+# hwsim_format's scan itself can be required here even though its clips
+# still aren't playable.
+STRICT_IMAGES = {"hiksim_format", "dhsim_format", "hwsim_format"}
+
+# Best-effort images: always registered and scanned, and their result is
+# always reported honestly in the summary, but a failure here does not by
+# itself fail `just demo`'s exit code. `xsim_unknown` is Tier B (no
+# VendorParser — docs/01-FORENSIC-CORE.md §4.8): its scan reaches job
+# status "done" but `recordings` stays 0 until its inferred layout is
+# confirmed (`try_confirm_inferred_layout` below), and confirmation itself
+# is best-effort (task FIX-1's real-mode confirm route).
+BEST_EFFORT_IMAGES = {"xsim_unknown"}
 
 # Fixed, deterministic SWGDE intake (CLAUDE.md rule 5: determinism — no
 # wall-clock values). Mirrors corpus/truth/hiksim_format.json's seizure
@@ -252,6 +298,25 @@ def poll_job(client: httpx.Client, job_id: str, deadline: float) -> dict[str, An
         time.sleep(0.5)
 
 
+_TOTAL_COUNT_HEADERS = ("x-total-count", "x-total", "total-count")
+
+
+def _response_total(resp: httpx.Response) -> int | None:
+    """``None`` unless the response carries a parseable total-count header
+    (FIX-1 is adding one to ``GET /cases/{cid}/frames`` — docs/02-BACKEND.md
+    §4's pagination note). Checked case-insensitively under a few
+    plausible header-name spellings since the exact name isn't frozen yet.
+    """
+    for name in _TOTAL_COUNT_HEADERS:
+        value = resp.headers.get(name)
+        if value is not None:
+            try:
+                return int(value)
+            except ValueError:
+                continue
+    return None
+
+
 def summarize(client: httpx.Client, case_id: str, evidence_id: str) -> dict[str, Any]:
     """Recordings + recovered-(carved)-frame counts for one evidence image.
 
@@ -266,6 +331,22 @@ def summarize(client: httpx.Client, case_id: str, evidence_id: str) -> dict[str,
     row count far under the cap for this demo corpus; ``truncated`` is
     still reported honestly (based on the *raw*, pre-filter page length)
     in case a future corpus image blows past it anyway.
+
+    An ``image_id`` query param is opportunistically also sent on every
+    request (harmless no-op if the API doesn't recognise it yet — extra
+    query params are ignored, never rejected).
+
+    Exact totals: if the response exposes a total-count header (see
+    ``_response_total``) *and* every row actually returned for a given
+    per-channel request already belongs to this ``evidence_id`` (i.e. the
+    query wasn't observably mixing in another image's frames for that
+    channel), that header value is this image's true per-channel total —
+    trustworthy regardless of whether the header itself is case-wide or
+    already server-side filtered to this image, since in that situation
+    the two are provably the same number. If even one per-channel request
+    doesn't meet that bar, the whole summary honestly falls back to the
+    raw-row / lower-bound wording rather than mixing an exact number for
+    some channels with a guessed one for others.
     """
     recs = client.get(f"/api/cases/{case_id}/recordings")
     recs.raise_for_status()
@@ -279,22 +360,43 @@ def summarize(client: httpx.Client, case_id: str, evidence_id: str) -> dict[str,
     # frame and must be counted once, not deduplicated away.
     carved_count = 0
     truncated = False
+    exact_total = 0
+    exact_reliable = True
     requests = [{"channel": c} for c in channels] or [{}]
     for extra_params in requests:
         resp = client.get(
             f"/api/cases/{case_id}/frames",
-            params={"source": "carved", "limit": 500, **extra_params},
+            params={
+                "source": "carved",
+                "limit": 500,
+                "image_id": evidence_id,
+                **extra_params,
+            },
         )
         resp.raise_for_status()
         page = resp.json()
         if len(page) >= 500:
             truncated = True
-        carved_count += sum(1 for f in page if f["image_id"] == evidence_id)
+        page_own = sum(1 for f in page if f["image_id"] == evidence_id)
+        carved_count += page_own
+        total = _response_total(resp)
+        if total is None or page_own != len(page):
+            exact_reliable = False
+        else:
+            exact_total += total
 
+    if exact_reliable and requests != [{}]:
+        return {
+            "recordings": len(recordings),
+            "recovered_frames": exact_total,
+            "recovered_frames_truncated": False,
+            "recovered_frames_exact": True,
+        }
     return {
         "recordings": len(recordings),
         "recovered_frames": carved_count,
         "recovered_frames_truncated": truncated,
+        "recovered_frames_exact": False,
     }
 
 
@@ -312,6 +414,117 @@ def print_summary(results: dict[str, dict[str, Any]]) -> None:
         print(f"    recordings: {summary['recordings']}")
         print(f"    recovered (deleted) frames: {summary['recovered_frames']}{note}")
     print()
+
+
+def try_confirm_inferred_layout(client: httpx.Client, evidence_id: str) -> dict[str, Any]:
+    """Best-effort: fetch ``xsim_unknown``'s inferred layout and confirm it
+    via ``POST /inferred-layouts/{lid}/confirm`` (task FIX-1 is making this
+    route real right now — real-mode confirm triggers the on-demand
+    ``parse_inferred_layout`` reindex stage, which is what actually
+    populates ``recordings``/``frames`` for a Tier B image;
+    ``apps/worker/pramaan_worker/stages.py`` docstring). Never raises and
+    never fails the overall demo run: if the route is still fixture-only
+    (the real-mode branch hasn't landed yet), the confirm call 404s/500s
+    against a lid the fixture store has never heard of, and that failure
+    is reported here, not treated as a demo-breaking error — see
+    docs/progress/FIX-2.md "Cross-workstream issues".
+    """
+    resp = client.get(f"/api/evidence/{evidence_id}/inferred-layout")
+    if resp.status_code == 404:
+        return {"status": "no_inferred_layout", "detail": "GET inferred-layout: 404"}
+    if resp.status_code >= 400:
+        return {
+            "status": "get_failed",
+            "detail": f"GET inferred-layout: {resp.status_code} {resp.text[:500]}",
+        }
+    layout = resp.json()
+    lid = layout.get("id")
+    if not lid:
+        return {"status": "no_layout_id", "detail": f"inferred-layout response had no id: {layout}"}
+    confirm_resp = client.post(
+        f"/api/inferred-layouts/{lid}/confirm",
+        headers=csrf_headers(client),
+    )
+    if confirm_resp.status_code >= 400:
+        return {
+            "status": "confirm_failed",
+            "detail": f"POST confirm: {confirm_resp.status_code} {confirm_resp.text[:500]}",
+        }
+    return {"status": "confirmed", "layout_id": lid}
+
+
+def get_or_create_report(client: httpx.Client, case_id: str) -> dict[str, Any]:
+    """Reuse an existing report for the case if one exists, else generate
+    one via ``POST /cases/{cid}/reports`` (task B3). Report generation is
+    *not* content-idempotent by design (docs/progress/B3.md "Decisions":
+    every successful report generation audits itself and anchors the
+    case, so two live calls on the same case necessarily see different
+    custody state and produce different ``report_sha256`` values) — reuse
+    keeps repeated ``just demo`` runs from growing the case's report/anchor
+    list without bound, rather than trying to force an idempotency the
+    design intentionally doesn't provide.
+    """
+    resp = client.get(f"/api/cases/{case_id}/reports")
+    resp.raise_for_status()
+    existing = resp.json()
+    if existing:
+        return dict(existing[-1])
+    resp = client.post(
+        f"/api/cases/{case_id}/reports",
+        json={"include_thumbnails": True},
+        headers=csrf_headers(client),
+    )
+    if resp.status_code >= 400:
+        raise DemoError(f"report generation failed: {resp.status_code} {resp.text}")
+    return dict(resp.json())
+
+
+def pick_live_recording(
+    client: httpx.Client, case_id: str, evidence_id: str
+) -> dict[str, Any] | None:
+    resp = client.get(f"/api/cases/{case_id}/recordings")
+    resp.raise_for_status()
+    for rec in resp.json():
+        if rec["image_id"] == evidence_id and not rec["deleted"]:
+            return dict(rec)
+    return None
+
+
+def get_or_create_export(
+    client: httpx.Client, case_id: str, recording_id: str
+) -> dict[str, Any]:
+    """Signed export for one recording (task B3). Genuinely idempotent —
+    re-exporting the same recording by the same examiner returns the same
+    export id/manifest hash/MP4 bytes (docs/progress/B3.md) — so this can
+    always just call ``POST /cases/{cid}/exports`` without a
+    reuse-lookup guard.
+    """
+    resp = client.post(
+        f"/api/cases/{case_id}/exports",
+        json={"recording_id": recording_id},
+        headers=csrf_headers(client),
+    )
+    if resp.status_code >= 400:
+        raise DemoError(f"export creation failed: {resp.status_code} {resp.text}")
+    return dict(resp.json())
+
+
+def verify_export(client: httpx.Client, export_id: str) -> tuple[bytes, dict[str, Any]]:
+    file_resp = client.get(f"/api/exports/{export_id}/file")
+    if file_resp.status_code >= 400:
+        raise DemoError(
+            f"fetching export {export_id} file failed: {file_resp.status_code} {file_resp.text}"
+        )
+    content = file_resp.content
+    verify_resp = client.post(
+        "/api/exports/verify",
+        files={"file": ("export.mp4", content, "video/mp4")},
+    )
+    if verify_resp.status_code >= 400:
+        raise DemoError(
+            f"POST /exports/verify failed: {verify_resp.status_code} {verify_resp.text}"
+        )
+    return content, dict(verify_resp.json())
 
 
 def main() -> int:
@@ -350,6 +563,16 @@ def main() -> int:
                 case_id = case["id"]
                 print(f"demo: case {case['case_number']} ({case_id})")
 
+                # One evidence image's register/scan failing must not abort
+                # the whole run — every image is attempted, and a failure
+                # is recorded (never silently dropped) so the summary
+                # still reports it. Defense in depth: earlier in this
+                # task's own testing, hwsim_format's scan request crashed
+                # outright (an uncaught exception from its "clips" stage —
+                # see docs/progress/FIX-2.md "Cross-workstream issues");
+                # that's since been fixed upstream to fail per-recording
+                # instead, but this guard is kept in case another image
+                # hits something similar.
                 results: dict[str, dict[str, Any]] = {}
                 for name, label in DEMO_EVIDENCE:
                     image_path = CORPUS_IMAGES / f"{name}.img"
@@ -359,36 +582,132 @@ def main() -> int:
                             file=sys.stderr,
                         )
                         continue
-                    evidence = register_evidence(client, case_id, image_path, label)
-                    evidence_id = evidence["id"]
-                    print(f"demo: registered {name} -> evidence_id={evidence_id}")
-                    job = run_scan(client, evidence_id)
-                    print(f"demo: scanning {name} (job {job['id']}) ...")
-                    job = poll_job(client, job["id"], deadline)
-                    summary = summarize(client, case_id, evidence_id)
-                    results[name] = {"evidence_id": evidence_id, "job": job, "summary": summary}
+                    evidence_id: str | None = None
+                    try:
+                        evidence = register_evidence(client, case_id, image_path, label)
+                        evidence_id = evidence["id"]
+                        print(f"demo: registered {name} -> evidence_id={evidence_id}")
+                        job = run_scan(client, evidence_id)
+                        print(f"demo: scanning {name} (job {job['id']}) ...")
+                        job = poll_job(client, job["id"], deadline)
+                        summary = summarize(client, case_id, evidence_id)
+                        results[name] = {
+                            "evidence_id": evidence_id,
+                            "job": job,
+                            "summary": summary,
+                        }
+                    except (DemoError, httpx.HTTPStatusError) as exc:
+                        print(f"demo: {name} scan FAILED: {exc}", file=sys.stderr)
+                        results[name] = {
+                            "evidence_id": evidence_id,
+                            "job": {"status": "error", "stages": []},
+                            "summary": {
+                                "recordings": 0,
+                                "recovered_frames": 0,
+                                "recovered_frames_truncated": False,
+                                "recovered_frames_exact": False,
+                            },
+                            "error": str(exc),
+                        }
 
                 print_summary(results)
 
-                required = results.get(REQUIRED_IMAGE)
-                if required is None:
-                    print(f"demo: {REQUIRED_IMAGE} was never scanned", file=sys.stderr)
-                    return 1
-                if required["job"]["status"] != "done":
+                # STRICT_IMAGES must each scan to completion with a
+                # non-empty index for `just demo` to exit 0.
+                for name in STRICT_IMAGES:
+                    r = results.get(name)
+                    if r is None:
+                        print(f"demo: {name} was never scanned", file=sys.stderr)
+                        return 1
+                    if r["job"]["status"] != "done":
+                        print(
+                            f"demo: {name} scan did not finish successfully "
+                            f"(status={r['job']['status']})",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    if r["summary"]["recordings"] <= 0:
+                        print(f"demo: {name} scanned but produced 0 recordings", file=sys.stderr)
+                        return 1
+
+                # BEST_EFFORT_IMAGES: always attempted, always reported —
+                # a failure here is printed plainly but never fails the
+                # overall demo run (see BEST_EFFORT_IMAGES's docstring).
+                for name in BEST_EFFORT_IMAGES:
+                    r = results.get(name)
+                    if r is None:
+                        print(f"demo: {name} not in this corpus — skipped", file=sys.stderr)
+                    elif r["job"]["status"] != "done":
+                        print(
+                            f"demo: {name} scan did not finish successfully "
+                            f"(status={r['job']['status']}) — known cross-workstream issue, "
+                            "see docs/progress/FIX-2.md",
+                            file=sys.stderr,
+                        )
+                    else:
+                        print(f"demo: {name} scanned OK (job status done).")
+
+                # xsim_unknown: confirm its inferred layout through the
+                # real API (FIX-1). Best-effort — never fails the demo run
+                # (see try_confirm_inferred_layout's docstring).
+                xsim_result = results.get("xsim_unknown")
+                confirm_info: dict[str, Any] | None = None
+                if xsim_result is not None and xsim_result["job"]["status"] == "done":
+                    confirm_info = try_confirm_inferred_layout(client, xsim_result["evidence_id"])
+                    print(f"demo: xsim_unknown inferred-layout confirm -> {confirm_info['status']}")
+                    if confirm_info["status"] != "confirmed":
+                        print(f"demo:   detail: {confirm_info.get('detail')}", file=sys.stderr)
+                    else:
+                        # Reindexed via the confirm-triggered
+                        # parse_inferred_layout stage — re-summarize so the
+                        # printed recordings/frame counts reflect it.
+                        xsim_result["summary"] = summarize(
+                            client, case_id, xsim_result["evidence_id"]
+                        )
+                        print(
+                            "demo: xsim_unknown recordings after confirm: "
+                            f"{xsim_result['summary']['recordings']}"
+                        )
+
+                # Report (signed PDF + BSA certificate) and one signed
+                # export for the demo case (task B3), on the required
+                # (hiksim_format) evidence's first live recording.
+                report = get_or_create_report(client, case_id)
+                report_sha256 = report["report_sha256"]
+                print(
+                    f"demo: report {report['id']}  pdf={report['pdf_path']}  "
+                    f"report_sha256={report_sha256}"
+                )
+                print(f"demo: report certificate={report['certificate_path']}")
+
+                required = results[REQUIRED_IMAGE]
+                live_recording = pick_live_recording(client, case_id, required["evidence_id"])
+                if live_recording is None:
                     print(
-                        f"demo: {REQUIRED_IMAGE} scan did not finish successfully "
-                        f"(status={required['job']['status']})",
+                        f"demo: no live recording found for {REQUIRED_IMAGE} — cannot export",
                         file=sys.stderr,
                     )
                     return 1
-                if required["summary"]["recordings"] <= 0:
+                export = get_or_create_export(client, case_id, live_recording["id"])
+                export_content, verify_result = verify_export(client, export["id"])
+                export_sha256 = hashlib.sha256(export_content).hexdigest()
+                print(
+                    f"demo: export {export['id']}  file={export['file_path']}  "
+                    f"video_sha256={export_sha256}"
+                )
+                print(f"demo: export verify -> signature_valid={verify_result['signature_valid']}")
+                if not verify_result["signature_valid"]:
                     print(
-                        f"demo: {REQUIRED_IMAGE} scanned but produced 0 recordings", file=sys.stderr
+                        f"demo: exported file failed verification: {verify_result}",
+                        file=sys.stderr,
                     )
                     return 1
 
-            print(f"demo: OK — {REQUIRED_IMAGE} scanned with "
-                  f"{results[REQUIRED_IMAGE]['summary']['recordings']} recordings.")
+            print(
+                f"demo: OK — {REQUIRED_IMAGE} scanned with "
+                f"{results[REQUIRED_IMAGE]['summary']['recordings']} recordings; "
+                f"report {report['id']} generated; export {export['id']} verified valid."
+            )
             return 0
         except DemoError as exc:
             print(f"demo: {exc}", file=sys.stderr)

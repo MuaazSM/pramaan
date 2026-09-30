@@ -205,6 +205,7 @@ def _hw_frame_header(
 class _Recording:
     channel: ChannelSpec
     round_index: int
+    generation: int
     device_start_s: float
     num_frames: int
     motion: list[MotionEvent] = field(default_factory=list)
@@ -213,9 +214,22 @@ class _Recording:
     data_len: int = 0
 
     def __post_init__(self) -> None:
-        self.id = hashlib.sha256(f"{self.channel.channel}|{self.round_index}".encode()).hexdigest()[
-            :16
-        ]
+        # Includes `generation`, not just `channel`/`round_index` (matching
+        # HIKSIM's/DHSIM's `_Recording.id` convention, which both already
+        # fold a `generation` term in): the "format" scenario's post-reset
+        # generation resets `round_index` back to 0, so `channel|round_index`
+        # alone collides generation 1's round 0 with generation 2's round 0
+        # for the same channel -- silently merging two distinct recordings'
+        # frames under one id and mislabelling every genuinely-live
+        # generation-2 frame as deleted/overwritten (docs/progress/C3.md
+        # "Cross-workstream issues"). `generation` disambiguates them without
+        # touching anything that reaches the on-disk image bytes (`id` is
+        # pure Python-side truth-building bookkeeping -- see module docstring
+        # references to docs/01-FORENSIC-CORE.md §4.6 for what's actually
+        # written).
+        self.id = hashlib.sha256(
+            f"{self.channel.channel}|{self.generation}|{self.round_index}".encode()
+        ).hexdigest()[:16]
 
     @property
     def device_end_s(self) -> float:
@@ -310,11 +324,14 @@ def build_image(name: str, images_dir: Path, truth_dir: Path, *, scenario: str) 
     """scenario: "format" | "overwrite"."""
     channels = default_channels()
 
-    def make_round(round_index: int, start_s: float, num_frames: int) -> list[_Recording]:
+    def make_round(
+        round_index: int, start_s: float, num_frames: int, *, generation: int
+    ) -> list[_Recording]:
         return [
             _Recording(
                 channel=ch,
                 round_index=round_index,
+                generation=generation,
                 device_start_s=start_s,
                 num_frames=num_frames,
                 motion=[MotionEvent(20, 45)] if (ch.channel == 3 and round_index == 0) else [],
@@ -339,12 +356,14 @@ def build_image(name: str, images_dir: Path, truth_dir: Path, *, scenario: str) 
     round_gap_s = RECORDING_FRAMES * (FRAME_INTERVAL_US / 1_000_000) + 60.0
 
     if scenario == "format":
-        round0 = make_round(0, TRUE_EPOCH_S, RECORDING_FRAMES)
-        round1 = make_round(1, TRUE_EPOCH_S + round_gap_s, RECORDING_FRAMES)
+        round0 = make_round(0, TRUE_EPOCH_S, RECORDING_FRAMES, generation=1)
+        round1 = make_round(1, TRUE_EPOCH_S + round_gap_s, RECORDING_FRAMES, generation=1)
         gen1 = round0 + round1
         format_true_s = round1[0].device_end_s + 300.0
-        # header reset -> round index counts from 0 again
-        gen2 = make_round(0, format_true_s + 60.0, RECORDING_FRAMES)
+        # header reset -> round index counts from 0 again; `generation=2`
+        # keeps this round's id from colliding with gen1's round 0 (the
+        # bug this task fixes -- see `_Recording.__post_init__`).
+        gen2 = make_round(0, format_true_s + 60.0, RECORDING_FRAMES, generation=2)
 
         data_buf = bytearray()
         for rec in gen1:
@@ -381,7 +400,7 @@ def build_image(name: str, images_dir: Path, truth_dir: Path, *, scenario: str) 
         rounds: list[list[_Recording]] = []
         t = TRUE_EPOCH_S
         for round_i in range(4):
-            rounds.append(make_round(round_i, t, RECORDING_FRAMES))
+            rounds.append(make_round(round_i, t, RECORDING_FRAMES, generation=1))
             t += round_gap_s
         round0, round1, round2, round3 = rounds
 

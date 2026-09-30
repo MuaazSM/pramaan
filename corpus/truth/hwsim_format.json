@@ -93,9 +93,9 @@
       "channel": 1,
       "deleted": true,
       "end_device": "2026-03-12T10:00:06Z",
-      "frames": 150,
+      "frames": 75,
       "indexed": false,
-      "overwritten_frames": 150,
+      "overwritten_frames": 75,
       "start_device": "2026-03-12T10:00:00Z"
     },
     {
@@ -108,9 +108,9 @@
       "channel": 2,
       "deleted": true,
       "end_device": "2026-03-12T10:00:06Z",
-      "frames": 150,
+      "frames": 75,
       "indexed": false,
-      "overwritten_frames": 150,
+      "overwritten_frames": 75,
       "start_device": "2026-03-12T10:00:00Z"
     },
     {
@@ -123,9 +123,9 @@
       "channel": 3,
       "deleted": true,
       "end_device": "2026-03-12T10:00:06Z",
-      "frames": 150,
+      "frames": 75,
       "indexed": false,
-      "overwritten_frames": 150,
+      "overwritten_frames": 75,
       "start_device": "2026-03-12T10:00:00Z"
     },
     {
@@ -138,9 +138,9 @@
       "channel": 4,
       "deleted": true,
       "end_device": "2026-03-12T10:00:06Z",
-      "frames": 150,
+      "frames": 75,
       "indexed": false,
-      "overwritten_frames": 150,
+      "overwritten_frames": 75,
       "start_device": "2026-03-12T10:00:00Z"
     },
     {
@@ -211,11 +211,11 @@
         ]
       ],
       "channel": 1,
-      "deleted": true,
+      "deleted": false,
       "end_device": "2026-03-12T10:07:18Z",
-      "frames": 150,
+      "frames": 75,
       "indexed": true,
-      "overwritten_frames": 150,
+      "overwritten_frames": 0,
       "start_device": "2026-03-12T10:07:12Z"
     },
     {
@@ -226,11 +226,11 @@
         ]
       ],
       "channel": 2,
-      "deleted": true,
+      "deleted": false,
       "end_device": "2026-03-12T10:07:18Z",
-      "frames": 150,
+      "frames": 75,
       "indexed": true,
-      "overwritten_frames": 150,
+      "overwritten_frames": 0,
       "start_device": "2026-03-12T10:07:12Z"
     },
     {
@@ -241,11 +241,11 @@
         ]
       ],
       "channel": 3,
-      "deleted": true,
+      "deleted": false,
       "end_device": "2026-03-12T10:07:18Z",
-      "frames": 150,
+      "frames": 75,
       "indexed": true,
-      "overwritten_frames": 150,
+      "overwritten_frames": 0,
       "start_device": "2026-03-12T10:07:12Z"
     },
     {
@@ -256,11 +256,11 @@
         ]
       ],
       "channel": 4,
-      "deleted": true,
+      "deleted": false,
       "end_device": "2026-03-12T10:07:18Z",
-      "frames": 150,
+      "frames": 75,
       "indexed": true,
-      "overwritten_frames": 150,
+      "overwritten_frames": 0,
       "start_device": "2026-03-12T10:07:12Z"
     }
   ],
