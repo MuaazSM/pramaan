@@ -37,6 +37,7 @@ from pramaan_core.ids import content_hash, content_id
 from pramaan_core.models import (
     ByteRange,
     FrameRef,
+    InferredLayout,
     LogEvent,
     Recording,
 )
@@ -330,6 +331,165 @@ def carve(ctx: StageContext) -> StageResult:
     )
 
 
+# --- confirm-triggered reindex (task FIX-1, not one of the 11 scan stages) -
+
+#: Frames on the same channel within this many microseconds of each other
+#: are treated as one continuous inferred recording; a larger gap starts a
+#: new one. Same value as ``pramaan_recovery.clip.DEFAULT_MAX_GAP_US`` (this
+#: module has no dependency on ``pramaan_recovery`` itself, so the constant
+#: is duplicated rather than imported — see docs/progress/B2.md "Integration
+#: contract" for why `pramaan_recovery` is only ever reached through the
+#: import-guarded registry).
+INFERRED_RUN_GAP_US = 2_000_000
+
+
+def _same_inferred_run(prev: FrameRef, cur: FrameRef) -> bool:
+    if prev.ts_header_us is not None and cur.ts_header_us is not None:
+        return (cur.ts_header_us - prev.ts_header_us) <= INFERRED_RUN_GAP_US
+    # No timestamp evidence to split on for this pair — keep them in one run
+    # rather than guessing a boundary that isn't there.
+    return True
+
+
+def parse_inferred_layout(ctx: StageContext, layout: InferredLayout) -> StageResult:
+    """Populate ``recordings`` and the ``inferred`` frame-staging file for
+    ``ctx.image_id`` from a *confirmed* :class:`InferredLayout`
+    (``POST /inferred-layouts/{lid}/confirm``'s real-mode reindex, task
+    FIX-1). Not one of the 11 automatic scan stages (docs/02-BACKEND.md
+    §6) — those run during ``/scan``, before an examiner has reviewed a
+    Tier B layout; this is the confirm-triggered equivalent of
+    ``parse_index`` for that image, run once, on demand, after
+    confirmation.
+
+    ``InferredParser`` itself has no live-index concept (every frame it
+    yields is ``recording_id=None, deleted=False`` — docs/progress/C3.md's
+    own docstring: "it doesn't know about a live index, only every place
+    the header+NAL pattern repeats"), so grouping frames into recordings
+    is this function's job. Frames are grouped per channel into runs by
+    time gap (:data:`INFERRED_RUN_GAP_US`); the *most recent* run per
+    channel (by its latest ``ts_header_us``) is treated as the live
+    recording (``deleted=False``) and every earlier run on that channel is
+    marked ``deleted=True`` — the same documented, corpus-informed
+    heuristic C3's own "Known gaps" section names ("grouping per channel
+    by a large time gap, treating the most recent cluster as 'live'"), not
+    a general forensic guarantee: nothing survives to *prove* which run is
+    live for genuinely unindexed footage, only to infer it.
+    """
+    factory = registry.get_inferred_parser_factory()
+    if factory is None:
+        return _skip(
+            "parse_inferred_layout", ctx, "parser unavailable (pramaan_recovery.infer)"
+        )
+
+    parser = factory(layout)
+    reader = EvidenceReader.open(_require_evidence_path(ctx, "parse_inferred_layout"))
+    try:
+        raw_frames = list(parser.iter_frames(reader, ctx.image_id))
+    finally:
+        reader.close()
+
+    by_channel: dict[int, list[FrameRef]] = {}
+    final_frames: list[FrameRef] = []
+    for f in raw_frames:
+        if f.channel is None:
+            final_frames.append(f)  # no channel evidence — can't group; keep ungrouped
+        else:
+            by_channel.setdefault(f.channel, []).append(f)
+
+    recordings: list[Recording] = []
+    for channel, chan_frames in by_channel.items():
+        chan_frames.sort(
+            key=lambda f: (f.ts_header_us if f.ts_header_us is not None else 0, f.payload_offset)
+        )
+        runs: list[list[FrameRef]] = []
+        for f in chan_frames:
+            if runs and _same_inferred_run(runs[-1][-1], f):
+                runs[-1].append(f)
+            else:
+                runs.append([f])
+        if not runs:
+            continue
+        live_run = runs[-1]  # runs are time-ordered; the last is most recent
+        for run in runs:
+            deleted = run is not live_run
+            start = min(fr.payload_offset for fr in run)
+            end = max(fr.payload_offset + fr.payload_len for fr in run)
+            ts_values = [fr.ts_header_us for fr in run if fr.ts_header_us is not None]
+            rec_id = content_id(
+                "rec",
+                {
+                    "image_id": ctx.image_id,
+                    "channel": channel,
+                    "start": start,
+                    "source": "inferred",
+                },
+            )
+            recordings.append(
+                Recording(
+                    id=rec_id,
+                    image_id=ctx.image_id,
+                    channel=channel,
+                    stream="main",
+                    start_ts_us=min(ts_values) if ts_values else None,
+                    end_ts_us=max(ts_values) if ts_values else None,
+                    byte_ranges=[ByteRange(offset=start, length=end - start)],
+                    source="inferred",
+                    deleted=deleted,
+                )
+            )
+            final_frames.extend(
+                fr.model_copy(update={"recording_id": rec_id, "deleted": deleted}) for fr in run
+            )
+
+    conn = open_case(ctx.case_dir)
+    try:
+        conn.execute(
+            "DELETE FROM recordings WHERE image_id = ? AND source = 'inferred'", (ctx.image_id,)
+        )
+        for rec in sorted(recordings, key=lambda r: (r.channel, r.start_ts_us or 0, r.id)):
+            conn.execute(
+                "INSERT INTO recordings (id, image_id, channel, stream, start_ts_us, end_ts_us,"
+                " byte_ranges, source, deleted) VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    rec.id,
+                    rec.image_id,
+                    rec.channel,
+                    rec.stream,
+                    rec.start_ts_us,
+                    rec.end_ts_us,
+                    json.dumps([br.model_dump() for br in rec.byte_ranges], sort_keys=True),
+                    rec.source,
+                    int(rec.deleted),
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # The automatic /scan pipeline's own `carve` stage already blind-carved
+    # this image with the generic Annex-B carver (no vendor/inferred layout
+    # was confirmed yet, so it had nothing better — docs/progress/C3.md
+    # "Known gaps": generic carving on an HWSIM/XSIM-shaped image "would
+    # mis-assign channel ... and drop timestamps entirely"). Now that an
+    # examiner has confirmed the true layout, its frames are strictly
+    # better evidence for this same image than that blind pass was —
+    # clearing "carved" avoids listing both a mis-parsed and a correctly-
+    # parsed copy of the same bytes side by side in the frame index.
+    staging.write_frame_stage(ctx.case_dir, ctx.image_id, "carved", [])
+    staging.write_frame_stage(ctx.case_dir, ctx.image_id, "inferred", final_frames)
+    output_hash = content_hash({"recordings": len(recordings), "frames": len(final_frames)})
+    return StageResult(
+        stage="parse_inferred_layout",
+        ok=True,
+        input_hash=ctx.input_hash,
+        output_hash=output_hash,
+        message=(
+            f"parse_inferred_layout: {len(recordings)} recording(s), {len(final_frames)} frame(s)"
+            f" via confirmed layout {layout.id}"
+        ),
+    )
+
+
 # --- stage 6: frame_index (always runs — core-only, no registry lookup) ----
 
 
@@ -514,6 +674,8 @@ def clips(ctx: StageContext) -> StageResult:
     builder = registry.get_clip_builder()
     clips_dir = Path(ctx.case_dir) / "derived" / "clips"
     made = 0
+    failed = 0
+    failure_notes: list[str] = []
 
     conn = open_case(ctx.case_dir)
     try:
@@ -530,74 +692,92 @@ def clips(ctx: StageContext) -> StageResult:
                 frames = frames_by_recording.get(rec_id, [])
                 if not frames:
                     continue
-                if builder is not None:
-                    # Real signature: pramaan_recovery.clip.build_clips
-                    # (docs/progress/B2.md "Integration contract") — one
-                    # call per recording's own frames groups them into
-                    # gap-bounded runs and writes each as its own MP4 +
-                    # provenance sidecar; usually one clip per recording.
-                    for result in builder(
-                        reader,
-                        ctx.image_id,
-                        channel,
-                        frames,
-                        clips_dir,
-                        parent_sha256=ctx.expected_sha256,
-                    ):
-                        sha256, _md5 = hash_file(str(result.path))
+                try:
+                    if builder is not None:
+                        # Real signature: pramaan_recovery.clip.build_clips
+                        # (docs/progress/B2.md "Integration contract") — one
+                        # call per recording's own frames groups them into
+                        # gap-bounded runs and writes each as its own MP4 +
+                        # provenance sidecar; usually one clip per recording.
+                        for result in builder(
+                            reader,
+                            ctx.image_id,
+                            channel,
+                            frames,
+                            clips_dir,
+                            parent_sha256=ctx.expected_sha256,
+                        ):
+                            sha256, _md5 = hash_file(str(result.path))
+                            conn.execute(
+                                "INSERT INTO clips (id, recording_id, path, kind, sha256,"
+                                " start_ts_us, end_ts_us, provenance) VALUES (?,?,?,?,?,?,?,?)",
+                                (
+                                    result.clip_id,
+                                    rec_id,
+                                    str(result.path),
+                                    "clip",
+                                    sha256,
+                                    result.start_ts_us,
+                                    result.end_ts_us,
+                                    json.dumps(result.provenance.model_dump(), sort_keys=True),
+                                ),
+                            )
+                            made += 1
+                    else:
+                        sorted_frames = sorted(frames, key=lambda fr: fr.payload_offset)
+                        out_path = clips_dir / f"{rec_id}.mp4"
+                        build_clip_ffmpeg(reader, sorted_frames, out_path)
+                        sha256, _md5 = hash_file(str(out_path))
+                        prov = make_provenance(
+                            step="pramaan_worker.clips.build_clip_ffmpeg",
+                            params={"recording_id": rec_id, "frame_count": len(sorted_frames)},
+                            parent_sha256=ctx.expected_sha256,
+                            created_utc=_EPOCH,
+                        )
+                        clip_id = content_id("clip", {"recording_id": rec_id, "sha256": sha256})
                         conn.execute(
                             "INSERT INTO clips (id, recording_id, path, kind, sha256,"
                             " start_ts_us, end_ts_us, provenance) VALUES (?,?,?,?,?,?,?,?)",
                             (
-                                result.clip_id,
+                                clip_id,
                                 rec_id,
-                                str(result.path),
+                                str(out_path),
                                 "clip",
                                 sha256,
-                                result.start_ts_us,
-                                result.end_ts_us,
-                                json.dumps(result.provenance.model_dump(), sort_keys=True),
+                                sorted_frames[0].ts_header_us,
+                                sorted_frames[-1].ts_header_us,
+                                json.dumps(prov.model_dump(), sort_keys=True),
                             ),
                         )
                         made += 1
-                else:
-                    sorted_frames = sorted(frames, key=lambda fr: fr.payload_offset)
-                    out_path = clips_dir / f"{rec_id}.mp4"
-                    build_clip_ffmpeg(reader, sorted_frames, out_path)
-                    sha256, _md5 = hash_file(str(out_path))
-                    prov = make_provenance(
-                        step="pramaan_worker.clips.build_clip_ffmpeg",
-                        params={"recording_id": rec_id, "frame_count": len(sorted_frames)},
-                        parent_sha256=ctx.expected_sha256,
-                        created_utc=_EPOCH,
-                    )
-                    clip_id = content_id("clip", {"recording_id": rec_id, "sha256": sha256})
-                    conn.execute(
-                        "INSERT INTO clips (id, recording_id, path, kind, sha256, start_ts_us,"
-                        " end_ts_us, provenance) VALUES (?,?,?,?,?,?,?,?)",
-                        (
-                            clip_id,
-                            rec_id,
-                            str(out_path),
-                            "clip",
-                            sha256,
-                            sorted_frames[0].ts_header_us,
-                            sorted_frames[-1].ts_header_us,
-                            json.dumps(prov.model_dump(), sort_keys=True),
-                        ),
-                    )
-                    made += 1
+                except Exception as exc:
+                    # A clip is a *derived, playback* artefact, not a
+                    # forensic finding (CLAUDE.md rule 6 doesn't apply —
+                    # nothing here claims anything about the evidence); one
+                    # recording ffmpeg can't remux (e.g. a format whose
+                    # frames carry no in-band SPS/PPS this build's
+                    # `sps_pps_cache` had nothing to seed from — a known,
+                    # documented gap, not this stage's own bug) must never
+                    # fail the whole scan job over an unrelated recording's
+                    # playability. Recorded in the stage message so it's
+                    # visible, not silently swallowed.
+                    failed += 1
+                    failure_notes.append(f"{rec_id}: {exc}")
         finally:
             reader.close()
         conn.commit()
     finally:
         conn.close()
+    message = f"clips: {made} clip(s) built"
+    if failed:
+        notes = "; ".join(failure_notes)[:500]
+        message += f", {failed} recording(s) could not be remuxed ({notes})"
     return StageResult(
         stage="clips",
         ok=True,
         input_hash=ctx.input_hash,
-        output_hash=content_hash({"clips": made}),
-        message=f"clips: {made} clip(s) built",
+        output_hash=content_hash({"clips": made, "failed": failed}),
+        message=message,
     )
 
 

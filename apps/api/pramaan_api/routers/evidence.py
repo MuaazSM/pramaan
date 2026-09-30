@@ -3,10 +3,11 @@
 Registration, ``/verify`` and ``/scan`` are real in ``STUB_MODE=0`` (task
 B1). Fingerprint/inferred-layout GETs are real too (task B2, backed by the
 ``fingerprint``/``infer_layout`` pipeline stages in
-``apps/worker/pramaan_worker/stages.py``) — inferred-layout stays empty
-until task C3 lands ``pramaan_recovery.infer``. Inferred-layout
-*confirmation* stays fixture-only in every mode for now (nothing to
-confirm in real mode yet).
+``apps/worker/pramaan_worker/stages.py``). Inferred-layout *confirmation*
+is real too (task FIX-1): confirming persists an audited custody entry and
+re-indexes the image's Tier B footage against the now-confirmed layout
+(``pramaan_api.real.pipeline_store.confirm_inferred_layout``) — stub mode
+keeps its own in-memory fixture behaviour unchanged.
 """
 
 from __future__ import annotations
@@ -176,9 +177,15 @@ def get_inferred_layout(
 
 @router.post("/inferred-layouts/{lid}/confirm", response_model=InferredLayout)
 def confirm_inferred_layout(
-    lid: str, user: User = Depends(require_examiner_or_admin)
+    lid: str,
+    user: User = Depends(require_examiner_or_admin),
+    settings: Settings = Depends(get_settings),
+    _csrf: None = Depends(require_csrf),
 ) -> InferredLayout:
-    layout = store.confirm_inferred_layout(lid, user.username)
+    if settings.stub_mode:
+        layout = store.confirm_inferred_layout(lid, user.username)
+    else:
+        layout = real_pipeline.confirm_inferred_layout(settings.data_dir, user, lid)
     if layout is None:
         raise not_found("inferred_layout", lid)
     return layout

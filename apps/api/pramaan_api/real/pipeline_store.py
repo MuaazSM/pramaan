@@ -40,6 +40,7 @@ from pramaan_api.real import appdb
 from pramaan_api.real import store as real_store
 from pramaan_api.real.paths import case_dir
 from pramaan_api.schemas import SearchResult
+from pramaan_api.security import User
 
 _FRAME_COLUMNS: tuple[str, ...] = tuple(FrameRef.model_fields.keys())
 _FRAME_SELECT = ", ".join(_FRAME_COLUMNS)
@@ -84,19 +85,16 @@ def _query_frames(
         con.close()
 
 
-def list_frames(
-    data_dir: str,
-    case_id: str,
+def _frame_filter_clauses(
     *,
-    channel: int | None = None,
-    source: str | None = None,
-    deleted: bool | None = None,
-    frame_type: str | None = None,
-    frm: int | None = None,
-    to: int | None = None,
-    recording_id: str | None = None,
-    limit: int = 500,
-) -> list[FrameRef]:
+    channel: int | None,
+    source: str | None,
+    deleted: bool | None,
+    frame_type: str | None,
+    frm: int | None,
+    to: int | None,
+    recording_id: str | None,
+) -> tuple[list[str], list[Any]]:
     clauses: list[str] = []
     params: list[Any] = []
     if recording_id is not None:
@@ -120,10 +118,75 @@ def list_frames(
     if to is not None:
         clauses.append("(ts_header_us IS NOT NULL AND ts_header_us <= ?)")
         params.append(to)
+    return clauses, params
+
+
+def list_frames(
+    data_dir: str,
+    case_id: str,
+    *,
+    channel: int | None = None,
+    source: str | None = None,
+    deleted: bool | None = None,
+    frame_type: str | None = None,
+    frm: int | None = None,
+    to: int | None = None,
+    recording_id: str | None = None,
+    limit: int = 500,
+) -> list[FrameRef]:
+    clauses, params = _frame_filter_clauses(
+        channel=channel,
+        source=source,
+        deleted=deleted,
+        frame_type=frame_type,
+        frm=frm,
+        to=to,
+        recording_id=recording_id,
+    )
     rows = _query_frames(
         case_dir(data_dir, case_id), where=" AND ".join(clauses), params=params, limit=limit
     )
     return [FrameRef(**row) for row in rows]
+
+
+def count_frames(
+    data_dir: str,
+    case_id: str,
+    *,
+    channel: int | None = None,
+    source: str | None = None,
+    deleted: bool | None = None,
+    frame_type: str | None = None,
+    frm: int | None = None,
+    to: int | None = None,
+    recording_id: str | None = None,
+) -> int:
+    """The *unpaginated* count of frames matching the same filters
+    :func:`list_frames` accepts (task FIX-1: ``GET /cases/{cid}/frames``'s
+    additive ``X-Total-Count`` response header — the 500-row page cap on
+    the body is unchanged, this only tells a client the true total)."""
+    cdir = case_dir(data_dir, case_id)
+    if not any(cdir.glob("index/frames-*.parquet")):
+        return 0
+    clauses, params = _frame_filter_clauses(
+        channel=channel,
+        source=source,
+        deleted=deleted,
+        frame_type=frame_type,
+        frm=frm,
+        to=to,
+        recording_id=recording_id,
+    )
+    con = duckdb.connect(":memory:")
+    try:
+        con.execute(f"CREATE VIEW frames AS SELECT * FROM read_parquet('{_frames_glob(cdir)}')")
+        sql = "SELECT COUNT(*) FROM frames"
+        if clauses:
+            sql += f" WHERE {' AND '.join(clauses)}"
+        row = con.execute(sql, params).fetchone()
+        return int(row[0]) if row is not None else 0
+    finally:
+        con.close()
 
 
 def get_frame_with_case(data_dir: str, frame_id: str) -> tuple[str, FrameRef] | None:
@@ -268,6 +331,114 @@ def get_inferred_layout(data_dir: str, evidence_id: str) -> InferredLayout | Non
     return _row_to_inferred_layout(row) if row is not None else None
 
 
+def get_inferred_layout_by_id(data_dir: str, layout_id: str) -> tuple[str, InferredLayout] | None:
+    """``(case_id, InferredLayout)`` for ``layout_id``, scanning every case
+    the same way :func:`get_frame_with_case` does — an inferred-layout id
+    alone doesn't carry its case (task FIX-1, ``POST
+    /inferred-layouts/{lid}/confirm``)."""
+    for cid in real_store.iter_case_ids(data_dir):
+        conn = appdb.case_db(data_dir, cid).conn
+        row = conn.execute("SELECT * FROM inferred_layouts WHERE id = ?", (layout_id,)).fetchone()
+        if row is not None:
+            return cid, _row_to_inferred_layout(row)
+    return None
+
+
+def set_inferred_layout_confirmed_by(
+    data_dir: str, case_id: str, layout_id: str, examiner: str
+) -> InferredLayout:
+    guarded = appdb.case_db(data_dir, case_id)
+    with guarded.lock:
+        guarded.conn.execute(
+            "UPDATE inferred_layouts SET confirmed_by = ? WHERE id = ?", (examiner, layout_id)
+        )
+        guarded.conn.commit()
+        row = guarded.conn.execute(
+            "SELECT * FROM inferred_layouts WHERE id = ?", (layout_id,)
+        ).fetchone()
+    return _row_to_inferred_layout(row)
+
+
+def confirm_inferred_layout(data_dir: str, actor: User, layout_id: str) -> InferredLayout | None:
+    """Real-mode ``POST /inferred-layouts/{lid}/confirm`` (task FIX-1):
+    persists the examiner's confirmation as an audited custody entry, then
+    re-indexes the image against the now-confirmed layout so its Tier B
+    footage (recordings + frames) becomes listed and playable — the real-
+    mode equivalent of the fixture store's ``confirm_inferred_layout``
+    (docs/progress/B2.md "Known gaps": "nothing to confirm in real mode
+    until C3 populates `inferred_layouts`" — C3 has since landed).
+
+    Role enforcement (only an examiner/admin may confirm — a reviewer may
+    not, docs/02-BACKEND.md §11) is the router's job
+    (``Depends(require_examiner_or_admin)``), not this function's.
+    """
+    found = get_inferred_layout_by_id(data_dir, layout_id)
+    if found is None:
+        return None
+    case_id, layout = found
+    updated = set_inferred_layout_confirmed_by(data_dir, case_id, layout_id, actor.username)
+    real_store.append_audit(
+        data_dir,
+        case_id,
+        actor=actor.username,
+        role=actor.role,
+        action="layout.confirmed",
+        object_type="inferred_layout",
+        object_id=layout_id,
+        details={"image_id": layout.image_id, "header_len": layout.header_len},
+    )
+    _reindex_confirmed_layout(data_dir, actor, case_id, updated)
+    return updated
+
+
+def _reindex_confirmed_layout(
+    data_dir: str, actor: User, case_id: str, layout: InferredLayout
+) -> None:
+    """Runs the confirm-triggered equivalent of ``parse_index``/
+    ``frame_index``/``clips`` for ``layout.image_id`` (task FIX-1
+    "Decisions": a real reindex, not a placeholder — see
+    ``pramaan_worker.stages.parse_inferred_layout``). Best-effort: if the
+    image was somehow removed since the layout was recorded, or
+    ``pramaan_recovery.infer`` genuinely isn't importable, each stage
+    function's own degrade-gracefully path (``ok=True, skipped=True``)
+    still applies and is still audited — a confirm action itself must
+    never fail just because the reindex found nothing to do.
+    """
+    image = real_store.get_evidence(data_dir, layout.image_id)
+    if image is None:
+        return
+
+    from pramaan_worker.runner import StageContext
+    from pramaan_worker.stages import clips as clips_stage
+    from pramaan_worker.stages import frame_index as frame_index_stage
+    from pramaan_worker.stages import parse_inferred_layout
+
+    ctx = StageContext(
+        case_dir=case_dir(data_dir, case_id),
+        image_id=layout.image_id,
+        input_hash=f"confirm-{layout.id}",
+        evidence_path=image.path,
+        expected_sha256=image.sha256,
+    )
+    results = [
+        ("parse_inferred_layout", parse_inferred_layout(ctx, layout)),
+        ("frame_index", frame_index_stage(ctx)),
+        ("clips", clips_stage(ctx)),
+    ]
+    for stage_label, result in results:
+        real_store.append_audit(
+            data_dir,
+            case_id,
+            actor=actor.username,
+            role=actor.role,
+            action=f"pipeline.{stage_label}",
+            object_type="inferred_layout",
+            object_id=layout.id,
+            payload_sha256=result.output_hash,
+            details={"ok": result.ok, "skipped": result.skipped, "message": result.message},
+        )
+
+
 # --- prove-it hex --------------------------------------------------------
 
 
@@ -294,10 +465,21 @@ def frame_hex_view(data_dir: str, frame_id: str, before: int, after: int) -> dic
     header_len = max(frame.payload_offset - start, 0)
     payload_only = data[header_len : header_len + frame.payload_len]
     recomputed = hashlib.sha256(payload_only).hexdigest()
-    # FrameRef.frame_id is documented as "sha256(payload)[:24]" — there is
-    # no separate stored-hash column, so the id itself *is* the claim being
-    # re-proved here.
-    stored = frame.frame_id
+    # FrameRef.payload_sha256 (task FIX-3) is the pure, un-salted sha256 hex
+    # of the payload bytes — the genuine "stored" integrity claim to
+    # re-prove here. `frame_id` (task FIX-3: `pramaan_core.ids.frame_id`,
+    # salted with image_id/offset so two frames sharing identical payload
+    # bytes at different offsets don't collide) is no longer a payload hash
+    # itself, so it's only a fallback for a `FrameRef` built without
+    # `payload_sha256` (an optional field — e.g. a hand-constructed test
+    # fixture predating FIX-3, or the stub-mode fixture generator, which
+    # has no real bytes to hash).
+    if frame.payload_sha256 is not None:
+        stored = frame.payload_sha256
+        matches = recomputed == stored
+    else:
+        stored = frame.frame_id
+        matches = recomputed.startswith(stored)
 
     annotations: list[dict[str, Any]] = []
     if header_len > 0:
@@ -327,7 +509,7 @@ def frame_hex_view(data_dir: str, frame_id: str, before: int, after: int) -> dic
         "annotations": annotations,
         "payload_sha256_recomputed": recomputed,
         "payload_sha256_stored": stored,
-        "matches": recomputed.startswith(stored),
+        "matches": matches,
     }
 
 

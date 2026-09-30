@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient
 from pramaan_api.settings import Settings
 from pramaan_core.evidence import EvidenceReader
 from pramaan_core.ids import content_id
+from pramaan_core.ids import frame_id as core_frame_id
 from pramaan_core.models import ByteRange, FrameRef, Recording, VendorMatch
 from pramaan_worker import registry
 
@@ -167,7 +168,7 @@ def _build_fake_image(tmp_path: Path, image_path: Path) -> list[dict[str, Any]]:
                 "header_offset": max(payload_offset - 8, 0),
                 "payload_offset": payload_offset,
                 "payload_len": rel_len,
-                "frame_id": hashlib.sha256(payload).hexdigest()[:24],
+                "payload_sha256": hashlib.sha256(payload).hexdigest(),
             }
         )
     return frame_specs
@@ -177,7 +178,10 @@ def _finalise(image_id: str, frame_specs: list[dict[str, Any]]) -> tuple[Recordi
     recording_id = content_id("rec", {"image_id": image_id, "channel": 0, "start": 0})
     frames = [
         FrameRef(
-            frame_id=spec["frame_id"],
+            # task FIX-3: frame_id is derived from (image_id, header_offset,
+            # payload_sha256), no longer a bare truncated payload hash —
+            # see pramaan_core.ids.frame_id.
+            frame_id=core_frame_id(image_id, spec["header_offset"], spec["payload_sha256"]),
             image_id=image_id,
             channel=0,
             stream="main",
@@ -193,6 +197,7 @@ def _finalise(image_id: str, frame_specs: list[dict[str, Any]]) -> tuple[Recordi
             source="index",
             recording_id=recording_id,
             deleted=False,
+            payload_sha256=spec["payload_sha256"],
         )
         for i, spec in enumerate(frame_specs)
     ]
@@ -331,8 +336,8 @@ def test_prove_it_hex_recomputes_matching_payload_hash(
         )
         assert resp.status_code == 200, resp.text
         view = resp.json()
-        assert view["payload_sha256_stored"] == frame.frame_id
-        assert view["payload_sha256_recomputed"].startswith(frame.frame_id)
+        assert view["payload_sha256_stored"] == frame.payload_sha256
+        assert view["payload_sha256_recomputed"] == frame.payload_sha256
         assert view["matches"] is True
         names = {a["name"] for a in view["annotations"]}
         assert "payload" in names
@@ -348,7 +353,7 @@ def test_prove_it_hex_flags_tamper_as_not_matching(
 
     # Flip a byte inside the second frame's payload, directly on disk —
     # bypassing the pipeline entirely — then re-request its hex view: the
-    # live recompute must now disagree with the frame_id claim.
+    # live recompute must now disagree with the stored payload_sha256 claim.
     image = real_client.get(f"/api/evidence/{frames[1].image_id}").json()
     path = Path(image["path"])
     data = bytearray(path.read_bytes())
@@ -441,17 +446,26 @@ def test_scan_degrades_gracefully_on_plain_bytes_with_no_matching_family(
     real_client: TestClient, real_evidence_dir: Path
 ) -> None:
     """Plain non-DVR bytes: no family fingerprints above the Tier-A
-    threshold, so ``parse_index``/``infer_layout`` have no family to key
-    off of, and C3's slice of the pipeline (``pramaan_recovery.infer``,
-    ``pramaan_recovery.deletion``, ``pramaan_logs.parse_logs``) had not
-    landed yet when this was written — every stage that depends on one of
-    those must still record ``skipped``/"parser unavailable" and the job
-    must still finish ``done`` (docs/PROMPTBOOK.md: "a missing package
-    degrades gracefully"), never fail the pipeline. ``fingerprint`` and
-    ``carve`` are deliberately *not* asserted as skipped here: once C2
-    lands (it may already have — see docs/progress/B2.md) they run for
-    real against these bytes and correctly find nothing, which is a
-    different (also correct) message shape.
+    threshold, so ``parse_index`` has no family to key off of and reports
+    ``skipped``. C3's slice of the pipeline (``pramaan_recovery.infer``,
+    ``pramaan_recovery.deletion``, ``pramaan_logs.parse_logs``) has landed
+    and runs for real against these bytes: ``infer_layout`` finds no
+    consistent header/magic in random bytes (correctly reports "no layout
+    could be inferred", not "parser unavailable"), and ``logs``/
+    ``deletion_verdict`` correctly find zero events/findings. The job must
+    still finish ``done`` (docs/PROMPTBOOK.md: "a missing package degrades
+    gracefully" — the same principle, extended to "a stage that legitimately
+    finds nothing also degrades gracefully"), never fail the pipeline.
+    ``fingerprint`` and ``carve`` (task C2) run for real too and correctly
+    find nothing.
+
+    The degrade-gracefully-on-a-missing-registry-entry path (the original
+    intent of this test, before C3 landed real ``infer_layout``/``logs``/
+    ``deletion_verdict`` implementations) is covered separately by
+    ``test_scan_degrades_gracefully_when_a_stage_parser_is_unregistered``
+    below, which forces each of those three lookups to miss via
+    ``pramaan_worker.registry``'s test-override hooks rather than relying on
+    the real packages being absent.
     """
     case = _create_case(real_client, "CR-B2-0007")
     file_path = real_evidence_dir / "plain.raw"
@@ -469,11 +483,56 @@ def test_scan_degrades_gracefully_on_plain_bytes_with_no_matching_family(
     by_name = {s["name"]: s for s in job["stages"]}
     assert all(s["status"] == "done" for s in job["stages"]), job["stages"]
     assert by_name["parse_index"]["message"].startswith("parse_index: skipped")
-    for stage_name in ("infer_layout", "logs", "deletion_verdict"):
-        assert "parser unavailable" in by_name[stage_name]["message"], by_name[stage_name]
+    assert by_name["infer_layout"]["message"] == "infer_layout: no layout could be inferred"
+    assert by_name["logs"]["message"] == "logs: 0 event(s) via unknown"
+    assert by_name["deletion_verdict"]["message"] == "deletion_verdict: 0 finding(s)"
     # frame_index always runs (core-only) and writes an empty index, since
     # nothing above found any frames in plain non-DVR bytes.
     assert "0 frame(s)" in by_name["frame_index"]["message"]
+
+    frame_rows = real_client.get(f"/api/cases/{case['id']}/frames").json()
+    assert frame_rows == []
+    recordings = real_client.get(f"/api/cases/{case['id']}/recordings").json()
+    assert recordings == []
+    log_events = real_client.get(f"/api/cases/{case['id']}/log-events").json()
+    assert log_events == []
+    deletions = real_client.get(f"/api/cases/{case['id']}/deletions").json()
+    assert deletions == []
+
+
+def test_scan_degrades_gracefully_when_a_stage_parser_is_unregistered(
+    real_client: TestClient, real_evidence_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same shape as the original (pre-C3) version of the test above, kept
+    meaningful now that the real packages exist: force
+    ``infer_layout``/``logs``/``deletion_verdict``'s *registry lookups*
+    (not their bodies) to miss, exactly as a genuine ``ImportError`` would
+    (``pramaan_worker.registry.get_layout_inferrer``/``get_log_parser``/
+    ``get_deletion_analyzer`` all return ``None``). The pipeline must still
+    finish every stage ``done`` with an honest "parser unavailable" message
+    and never fail the job over a dependency that isn't there
+    (docs/PROMPTBOOK.md: "a missing package degrades gracefully").
+    """
+    monkeypatch.setattr(registry, "get_layout_inferrer", lambda: None)
+    monkeypatch.setattr(registry, "get_log_parser", lambda: None)
+    monkeypatch.setattr(registry, "get_deletion_analyzer", lambda: None)
+
+    case = _create_case(real_client, "CR-B2-0008")
+    file_path = real_evidence_dir / "plain2.raw"
+    file_path.write_bytes(bytes((i * 11 + 5) % 256 for i in range(4096)))
+    ev = real_client.post(
+        f"/api/cases/{case['id']}/evidence",
+        json={"path": str(file_path), "label": "plain disk", "intake": _intake_body()},
+    ).json()
+
+    resp = real_client.post(f"/api/evidence/{ev['id']}/scan", json={})
+    assert resp.status_code == 202, resp.text
+    job = resp.json()
+    assert job["status"] == "done", job
+    by_name = {s["name"]: s for s in job["stages"]}
+    assert all(s["status"] == "done" for s in job["stages"]), job["stages"]
+    for stage_name in ("infer_layout", "logs", "deletion_verdict"):
+        assert "parser unavailable" in by_name[stage_name]["message"], by_name[stage_name]
 
     frame_rows = real_client.get(f"/api/cases/{case['id']}/frames").json()
     assert frame_rows == []

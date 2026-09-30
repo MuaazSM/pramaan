@@ -19,10 +19,18 @@ from pramaan_api.settings import Settings, get_settings
 
 router = APIRouter(tags=["frames"])
 
+#: Additive response header on ``GET /cases/{cid}/frames`` carrying the
+#: *unpaginated* match count (task FIX-1) — the 500-row page cap on the
+#: JSON body (docs/02-BACKEND.md §4) is unchanged; this lets a client (e.g.
+#: `just demo`) report exact counts instead of treating a full page as a
+#: lower bound.
+_TOTAL_COUNT_HEADER = "X-Total-Count"
+
 
 @router.get("/cases/{cid}/frames", response_model=list[FrameRef])
 def list_frames(
     cid: str,
+    response: Response,
     channel: int | None = None,
     source: Literal["index", "carved", "inferred"] | None = None,
     deleted: bool | None = None,
@@ -45,9 +53,21 @@ def list_frames(
             frm=from_,
             to=to,
         )
+        response.headers[_TOTAL_COUNT_HEADER] = str(len(frames))
         return frames[:limit]
     if real_store.get_case(settings.data_dir, cid) is None:
         raise not_found("case", cid)
+    total = real_pipeline.count_frames(
+        settings.data_dir,
+        cid,
+        channel=channel,
+        source=source,
+        deleted=deleted,
+        frame_type=frame_type,
+        frm=from_,
+        to=to,
+    )
+    response.headers[_TOTAL_COUNT_HEADER] = str(total)
     return real_pipeline.list_frames(
         settings.data_dir,
         cid,

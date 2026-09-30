@@ -73,13 +73,23 @@ DeletionAnalyzer = Callable[..., list[DeletionFinding]]
 #: None`` and ``.provenance: pramaan_core.models.Provenance``.
 ClipBuilder = Callable[..., list[Any]]
 LogParser = Callable[[EvidenceReader, str], list[LogEvent]]
+#: ``(layout: InferredLayout) -> <object with .iter_frames(reader, image_id)
+#: -> Iterator[FrameRef]>`` — matches ``pramaan_recovery.infer.InferredParser``
+#: (the class itself is the factory: ``InferredParser(layout)``). Used by the
+#: `/inferred-layouts/{lid}/confirm` real-mode reindex (task FIX-1), not by
+#: any of the 11 automatic scan stages.
+InferredParserFactory = Callable[[InferredLayout], Any]
 
 #: Real per-family vendor carvers (docs/01-FORENSIC-CORE.md §4.7 step 7),
 #: dispatched to from :func:`get_carver` when no override is registered.
 #: Families with no dedicated carver (e.g. the Tier C ``gensim`` corpus, or
 #: any family carve.py's ``carve_annexb`` alone must handle) fall back to
 #: the generic carver.
-_REAL_VENDOR_CARVER_NAMES: dict[str, str] = {"dhsim": "carve_dhav", "hiksim": "carve_hiksim_ps"}
+_REAL_VENDOR_CARVER_NAMES: dict[str, str] = {
+    "dhsim": "carve_dhav",
+    "hiksim": "carve_hiksim_ps",
+    "hwsim": "carve_hwsim",
+}
 
 _fingerprinter: Fingerprinter | None = None
 _vendor_parsers: dict[str, VendorParser] = {}
@@ -89,6 +99,7 @@ _layout_inferrer: LayoutInferrer | None = None
 _deletion_analyzer: DeletionAnalyzer | None = None
 _clip_builder: ClipBuilder | None = None
 _log_parser: LogParser | None = None
+_inferred_parser_factory: InferredParserFactory | None = None
 
 
 def register_fingerprinter(fn: Fingerprinter | None) -> None:
@@ -138,10 +149,15 @@ def register_log_parser(fn: LogParser | None) -> None:
     _log_parser = fn
 
 
+def register_inferred_parser_factory(fn: InferredParserFactory | None) -> None:
+    global _inferred_parser_factory
+    _inferred_parser_factory = fn
+
+
 def reset_for_tests() -> None:
     """Clear every override. Call from a test fixture's teardown."""
     global _fingerprinter, _generic_carver, _layout_inferrer, _deletion_analyzer
-    global _clip_builder, _log_parser
+    global _clip_builder, _log_parser, _inferred_parser_factory
     _fingerprinter = None
     _vendor_parsers.clear()
     _generic_carver = None
@@ -150,6 +166,7 @@ def reset_for_tests() -> None:
     _deletion_analyzer = None
     _clip_builder = None
     _log_parser = None
+    _inferred_parser_factory = None
 
 
 def get_fingerprinter() -> Fingerprinter | None:
@@ -245,5 +262,16 @@ def get_log_parser() -> LogParser | None:
         from pramaan_logs import parse_logs  # type: ignore[import-untyped]
 
         return parse_logs  # type: ignore[no-any-return]
+    except (ImportError, AttributeError):
+        return None
+
+
+def get_inferred_parser_factory() -> InferredParserFactory | None:
+    if _inferred_parser_factory is not None:
+        return _inferred_parser_factory
+    try:
+        from pramaan_recovery.infer import InferredParser
+
+        return InferredParser  # type: ignore[no-any-return]
     except (ImportError, AttributeError):
         return None

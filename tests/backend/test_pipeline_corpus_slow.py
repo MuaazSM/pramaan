@@ -32,7 +32,7 @@ def _corpus_image(name: str) -> Path | None:
 
 def _family_registered(family: str) -> bool:
     try:
-        import pramaan_formats.registry as reg  # type: ignore[import-untyped]
+        import pramaan_formats.registry as reg
     except ImportError:
         return False
     try:
@@ -55,7 +55,16 @@ def _intake_body() -> dict[str, str]:
 
 @pytest.mark.parametrize(
     ("family", "image_name"),
-    [("hiksim", "hiksim_format.img"), ("dhsim", "dhsim_format.img")],
+    [
+        ("hiksim", "hiksim_format.img"),
+        ("dhsim", "dhsim_format.img"),
+        # HWSIM (task C3/FIX-1): Tier A, real VendorParser + (once
+        # registered — see `apps/worker/pramaan_worker/registry.py`'s
+        # `_REAL_VENDOR_CARVER_NAMES`) real vendor carver for its deleted
+        # round. `list_recordings`/`iter_frames` come straight from
+        # `parse_index`, same as HIKSIM/DHSIM — no confirm step needed.
+        ("hwsim", "hwsim_format.img"),
+    ],
 )
 def test_scan_pipeline_e2e_on_corpus_image(
     real_client: TestClient, real_evidence_dir: Path, family: str, image_name: str
@@ -95,3 +104,76 @@ def test_scan_pipeline_e2e_on_corpus_image(
         hex_resp = real_client.get(f"/api/frames/{frame['frame_id']}/hex")
         assert hex_resp.status_code == 200, hex_resp.text
         assert hex_resp.json()["matches"] is True
+
+
+def test_xsim_layout_confirm_enables_recordings(
+    real_client: TestClient, real_reviewer_client: TestClient, real_evidence_dir: Path
+) -> None:
+    """XSIM (Tier B, no vendor signature above the Tier-A threshold —
+    docs/01-FORENSIC-CORE.md §4.6/§4.8): ``/scan`` runs ``infer_layout`` for
+    real (task C3) and discovers a layout, but ``parse_index`` has no
+    family to key off of, so XSIM footage isn't listed as a recording
+    until an examiner reviews and confirms the discovered layout (task
+    FIX-1, docs/02-BACKEND.md §4: "Confirmation is audited"). A reviewer
+    may not confirm one (docs/02-BACKEND.md §11); an examiner confirming
+    persists the confirmation and re-indexes the image so its footage
+    becomes listed (``recordings``) and playable (a live, non-deleted
+    recording with frames attached).
+    """
+    image_src = _corpus_image("xsim_unknown.img")
+    if image_src is None:
+        pytest.skip("corpus/images/xsim_unknown.img not present (run `just corpus` — task Q1/Q2)")
+    try:
+        from pramaan_recovery.infer import infer_layout  # type: ignore[import-untyped] # noqa: F401
+    except ImportError:
+        pytest.skip("pramaan_recovery.infer not importable yet (task C3)")
+
+    dest = real_evidence_dir / "xsim_unknown.img"
+    shutil.copy(image_src, dest)
+
+    case = real_client.post(
+        "/api/cases", json={"case_number": "CR-CORPUS-XSIM", "title": "xsim_unknown.img"}
+    ).json()
+    ev = real_client.post(
+        f"/api/cases/{case['id']}/evidence",
+        json={"path": str(dest), "label": "xsim_unknown.img", "intake": _intake_body()},
+    ).json()
+
+    resp = real_client.post(f"/api/evidence/{ev['id']}/scan", json={})
+    assert resp.status_code == 202, resp.text
+    job = resp.json()
+    assert job["status"] == "done", job
+    assert all(s["status"] == "done" for s in job["stages"]), job["stages"]
+
+    layout_resp = real_client.get(f"/api/evidence/{ev['id']}/inferred-layout")
+    assert layout_resp.status_code == 200, layout_resp.text
+    layout = layout_resp.json()
+    assert layout["confirmed_by"] is None
+    layout_id = layout["id"]
+
+    forbidden = real_reviewer_client.post(f"/api/inferred-layouts/{layout_id}/confirm")
+    assert forbidden.status_code == 403, forbidden.text
+    # A reviewer's failed attempt must not have confirmed it anyway.
+    still_unconfirmed = real_client.get(f"/api/evidence/{ev['id']}/inferred-layout").json()
+    assert still_unconfirmed["confirmed_by"] is None
+
+    confirm_resp = real_client.post(f"/api/inferred-layouts/{layout_id}/confirm")
+    assert confirm_resp.status_code == 200, confirm_resp.text
+    confirmed = confirm_resp.json()
+    assert confirmed["id"] == layout_id
+    assert confirmed["confirmed_by"] == "examiner"
+
+    recordings = real_client.get(f"/api/cases/{case['id']}/recordings").json()
+    assert len(recordings) > 0, "confirming the layout must list XSIM's footage as recordings"
+    live = [r for r in recordings if not r["deleted"]]
+    assert len(live) > 0, "at least one recording per channel must be listed as live/playable"
+
+    frames = real_client.get(f"/api/cases/{case['id']}/frames").json()
+    assert len(frames) > 0
+    recording_ids = {r["id"] for r in recordings}
+    assert any(f["recording_id"] in recording_ids for f in frames)
+
+    # Confirming is itself an audited action (docs/02-BACKEND.md §8).
+    audit = real_client.get(f"/api/cases/{case['id']}/audit").json()
+    actions = [e["action"] for e in audit["items"]]
+    assert "layout.confirmed" in actions
