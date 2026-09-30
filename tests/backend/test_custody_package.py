@@ -5,8 +5,10 @@ isolation from the API layer.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pramaan_core.db import open_case
 from pramaan_custody import (
     LocalAnchor,
@@ -161,6 +163,48 @@ def test_keypair_is_created_once_and_reused(tmp_path: Path) -> None:
     key_file = keys_dir / "examiner.ed25519"
     assert key_file.exists()
     assert (key_file.stat().st_mode & 0o777) == 0o600
+
+
+def test_load_or_create_keypair_is_race_safe_under_concurrent_first_use(tmp_path: Path) -> None:
+    """FIX-4 bug 2: `load_or_create_keypair` used to have a TOCTOU race on
+    first use — two concurrent callers could each see "no key file yet",
+    each generate their *own* keypair, and each write it, so whichever
+    write landed last silently became "the" persisted key even though an
+    earlier caller had already signed something with the other one
+    (docs/progress/F4.md: custody signature verification failing from
+    entry #1 on fresh data). Every one of many concurrent first-use
+    callers must converge on the single persisted keypair, and a signature
+    made with each caller's own returned key object must verify against
+    that persisted key.
+    """
+    keys_dir = tmp_path / "keys"
+    n = 32
+    results: list[Ed25519PrivateKey | None] = [None] * n
+    barrier = threading.Barrier(n)
+
+    def _worker(i: int) -> None:
+        barrier.wait()  # maximise concurrent "file doesn't exist yet" contention
+        results[i] = load_or_create_keypair(keys_dir, "examiner")
+
+    threads = [threading.Thread(target=_worker, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    persisted_pub = public_key_hex(load_or_create_keypair(keys_dir, "examiner"))
+
+    for key in results:
+        assert key is not None
+        assert public_key_hex(key) == persisted_pub
+
+    # Not just equal in hex -- each thread's own key object must produce a
+    # signature that verifies against the one persisted public key.
+    for i, key in enumerate(results):
+        assert key is not None
+        message = f"entry-{i}".encode()
+        sig = sign(key, message)
+        assert verify(persisted_pub, message, sig)
 
 
 def test_merkle_root_matches_manual_pairwise_hash() -> None:

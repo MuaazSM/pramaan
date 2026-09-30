@@ -42,6 +42,10 @@ def _open(path: Path) -> GuardedDB:
         conn = sqlite3.connect(str(path / "case.db"), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
+        # See pramaan_core.db.open_case's identical PRAGMA: this cached
+        # connection is also reachable from a second, independent process
+        # sharing the same data dir (task FIX-4 / FIX-2 #3).
+        conn.execute("PRAGMA busy_timeout = 5000")
         guarded = GuardedDB(conn=conn, lock=threading.Lock())
         _dbs[key] = guarded
         return guarded

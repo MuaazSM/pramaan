@@ -239,3 +239,283 @@ def test_missing_csrf_header_rejected(real_settings, real_evidence_dir: Path) ->
             assert create.json()["error"]["code"] == "csrf_failed"
     finally:
         app.dependency_overrides.pop(get_settings, None)
+
+
+# --- FIX-4 bug 1: frame reads tolerate a pre-FIX-3 Parquet schema ----------
+#
+# `list_frames`/`count_frames` used to hard-select `payload_sha256` (a
+# FIX-3 addition) from the frame-index Parquet, 500ing (DuckDB
+# `BinderException`) on any frames-*.parquet written before that column
+# existed. See docs/progress/F4.md "Cross-workstream issues" #1 for the
+# real-mode repro (`POST /cases/{cid}/exports` 500ing on `list_frames`).
+
+
+def _old_schema_frame_row(*, frame_id: str, image_id: str, recording_id: str) -> dict:
+    """A frame row using only pre-FIX-3 `FrameRef` columns (no
+    `payload_sha256`)."""
+    return {
+        "frame_id": frame_id,
+        "image_id": image_id,
+        "channel": 0,
+        "stream": "main",
+        "codec": "h264",
+        "frame_type": "I",
+        "header_offset": 0,
+        "payload_offset": 8,
+        "payload_len": 16,
+        "ts_header_us": 0,
+        "ts_index_us": 0,
+        "width": 64,
+        "height": 64,
+        "source": "index",
+        "recording_id": recording_id,
+        "deleted": False,
+        "ts_osd_us": None,
+        "ts_norm_us": None,
+        "norm_confidence": None,
+        "motion_score": None,
+    }
+
+
+def _write_old_schema_frames_parquet(index_dir: Path, image_id: str, rows: list[dict]) -> None:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from pramaan_core.frames import SCHEMA as FRAME_SCHEMA
+
+    old_schema = pa.schema([f for f in FRAME_SCHEMA if f.name != "payload_sha256"])
+    columns: dict[str, list] = {name: [row[name] for row in rows] for name in old_schema.names}
+    table = pa.table(columns, schema=old_schema)
+    pq.write_table(table, index_dir / f"frames-{image_id}.parquet")
+
+
+def test_list_frames_tolerates_parquet_missing_payload_sha256_column(tmp_path: Path) -> None:
+    from pramaan_api.real import appdb, pipeline_store
+    from pramaan_api.real.paths import case_dir
+
+    data_dir = str(tmp_path / "data")
+    cid = "case_old_schema"
+    appdb.case_db(data_dir, cid)  # creates case.db so get_frame_with_case can find this case
+    index_dir = case_dir(data_dir, cid) / "index"
+    index_dir.mkdir(parents=True)
+
+    row = _old_schema_frame_row(
+        frame_id="frm_deadbeefdeadbeefdeadbeef", image_id="img_old", recording_id="rec_old"
+    )
+    _write_old_schema_frames_parquet(index_dir, "img_old", [row])
+
+    frames = pipeline_store.list_frames(data_dir, cid)
+    assert len(frames) == 1
+    assert frames[0].frame_id == "frm_deadbeefdeadbeefdeadbeef"
+    assert frames[0].payload_sha256 is None
+
+    assert pipeline_store.count_frames(data_dir, cid) == 1
+
+    found = pipeline_store.get_frame_with_case(data_dir, "frm_deadbeefdeadbeefdeadbeef")
+    assert found is not None
+    assert found[0] == cid
+    assert found[1].payload_sha256 is None
+
+
+def test_list_frames_tolerates_mixed_old_and_new_schema_files(tmp_path: Path) -> None:
+    """One image scanned before FIX-3 (no `payload_sha256` column) and one
+    scanned after, both indexed under the same case — `union_by_name`
+    lets the glob mix per-file schemas."""
+    from pramaan_api.real import pipeline_store
+    from pramaan_api.real.paths import case_dir
+    from pramaan_core.frames import write_frames
+    from pramaan_core.models import FrameRef
+
+    data_dir = str(tmp_path / "data")
+    cid = "case_mixed_schema"
+    index_dir = case_dir(data_dir, cid) / "index"
+    index_dir.mkdir(parents=True)
+
+    old_row = _old_schema_frame_row(
+        frame_id="frm_aaaaaaaaaaaaaaaaaaaaaaaa", image_id="img_old", recording_id="rec_old"
+    )
+    _write_old_schema_frames_parquet(index_dir, "img_old", [old_row])
+
+    new_frame = FrameRef(
+        frame_id="frm_bbbbbbbbbbbbbbbbbbbbbbbb",
+        image_id="img_new",
+        channel=0,
+        stream="main",
+        codec="h264",
+        frame_type="I",
+        header_offset=0,
+        payload_offset=8,
+        payload_len=16,
+        ts_header_us=1,
+        ts_index_us=1,
+        width=64,
+        height=64,
+        source="index",
+        recording_id="rec_new",
+        deleted=False,
+        payload_sha256="c" * 64,
+    )
+    write_frames(case_dir(data_dir, cid), "img_new", [new_frame])
+
+    frames = pipeline_store.list_frames(data_dir, cid)
+    by_id = {f.frame_id: f for f in frames}
+    assert len(frames) == 2
+    assert by_id["frm_aaaaaaaaaaaaaaaaaaaaaaaa"].payload_sha256 is None
+    assert by_id["frm_bbbbbbbbbbbbbbbbbbbbbbbb"].payload_sha256 == "c" * 64
+    assert pipeline_store.count_frames(data_dir, cid) == 2
+
+
+# --- FIX-4 (orchestrator add): offset pagination reaches frames with no
+# ts_header_us (generic-carved footage, e.g. XSIM's blind carve pass) -----
+#
+# `from`/`to` filter on `ts_header_us` and correctly exclude NULL rows
+# (`_frame_filter_clauses`), so a client that only had those two params
+# could never page past frames with no device-clock header. `offset` pages
+# over the same deterministic total order regardless.
+
+
+def test_list_frames_offset_pagination_reaches_frames_with_no_timestamp(tmp_path: Path) -> None:
+    from pramaan_api.real import pipeline_store
+    from pramaan_api.real.paths import case_dir
+    from pramaan_core.frames import write_frames
+    from pramaan_core.models import FrameRef
+
+    data_dir = str(tmp_path / "data")
+    cid = "case_carved_no_ts"
+    cdir = case_dir(data_dir, cid)
+
+    # A handful of frames with a real ts_header_us and a handful of
+    # generic-carved ones with none at all -- both must be reachable by
+    # paging through with `offset`, and no frame must ever appear twice or
+    # be skipped across a full page walk.
+    frames = []
+    for i in range(3):
+        frames.append(
+            FrameRef(
+                frame_id=f"frm_ts{i:022d}",
+                image_id="img_carved",
+                channel=0,
+                stream="main",
+                codec="h264",
+                frame_type="I",
+                header_offset=None,
+                payload_offset=i * 100,
+                payload_len=50,
+                ts_header_us=i * 1000,
+                ts_index_us=None,
+                width=None,
+                height=None,
+                source="index",
+                recording_id=None,
+                deleted=False,
+                payload_sha256=None,
+            )
+        )
+    for i in range(4):
+        frames.append(
+            FrameRef(
+                frame_id=f"frm_nots{i:020d}",
+                image_id="img_carved",
+                channel=0,
+                stream="main",
+                codec="h264",
+                frame_type="other",
+                header_offset=None,
+                payload_offset=10_000 + i * 100,
+                payload_len=50,
+                ts_header_us=None,  # generic-carved: no device-clock header
+                ts_index_us=None,
+                width=None,
+                height=None,
+                source="carved",
+                recording_id=None,
+                deleted=False,
+                payload_sha256=None,
+            )
+        )
+    write_frames(cdir, "img_carved", frames)
+
+    total = pipeline_store.count_frames(data_dir, cid)
+    assert total == len(frames) == 7
+
+    # Page through with a small page size, walking every frame via offset,
+    # exactly the way the frames router's `offset` query param is used.
+    page_size = 3
+    seen_ids: list[str] = []
+    offset = 0
+    for _ in range(10):  # generous upper bound on iterations
+        page = pipeline_store.list_frames(data_dir, cid, limit=page_size, offset=offset)
+        if not page:
+            break
+        seen_ids.extend(f.frame_id for f in page)
+        offset += page_size
+
+    assert len(seen_ids) == len(set(seen_ids)) == total, "no duplicates, none skipped"
+    assert {f.frame_id for f in frames} == set(seen_ids)
+    # The NULL-ts_header_us frames were genuinely reached, not silently
+    # dropped by pagination.
+    assert any(fid.startswith("frm_nots") for fid in seen_ids)
+
+    # `from`/`to` remain unchanged and still correctly exclude NULL rows —
+    # `offset` is additive, not a replacement.
+    ts_only = pipeline_store.list_frames(data_dir, cid, frm=0, to=10_000)
+    assert {f.frame_id for f in ts_only} == {f"frm_ts{i:022d}" for i in range(3)}
+
+
+def test_frames_route_offset_query_param_pages_through_every_frame(
+    real_client: TestClient, real_settings
+) -> None:
+    """Same scenario as ``test_list_frames_offset_pagination_reaches_frames
+    _with_no_timestamp`` above, exercised through the actual HTTP route
+    (``GET /cases/{cid}/frames?offset=...``) and its ``X-Total-Count``
+    header, task FIX-4."""
+    from pramaan_api.real.paths import case_dir
+    from pramaan_core.frames import write_frames
+    from pramaan_core.models import FrameRef
+
+    case = real_client.post(
+        "/api/cases", json={"case_number": "CR-FIX4-FRAME-OFFSET", "title": "offset paging"}
+    ).json()
+    cdir = case_dir(real_settings.data_dir, case["id"])
+
+    frames = [
+        FrameRef(
+            frame_id=f"frm_x{i:022d}",
+            image_id="img_x",
+            channel=0,
+            stream="main",
+            codec="h264",
+            frame_type="other" if i % 2 else "I",
+            header_offset=None,
+            payload_offset=i * 100,
+            payload_len=50,
+            # Every other frame is a generic-carved one with no
+            # device-clock header at all.
+            ts_header_us=None if i % 2 else i * 1000,
+            ts_index_us=None,
+            width=None,
+            height=None,
+            source="carved" if i % 2 else "index",
+            recording_id=None,
+            deleted=False,
+            payload_sha256=None,
+        )
+        for i in range(6)
+    ]
+    write_frames(cdir, "img_x", frames)
+
+    total_resp = real_client.get(f"/api/cases/{case['id']}/frames", params={"limit": 1})
+    assert total_resp.status_code == 200, total_resp.text
+    assert total_resp.headers["X-Total-Count"] == "6"
+
+    seen_ids: list[str] = []
+    for offset in range(0, 6, 2):
+        page = real_client.get(
+            f"/api/cases/{case['id']}/frames", params={"limit": 2, "offset": offset}
+        )
+        assert page.status_code == 200, page.text
+        assert page.headers["X-Total-Count"] == "6"
+        seen_ids.extend(f["frame_id"] for f in page.json())
+
+    assert len(seen_ids) == len(set(seen_ids)) == 6
+    assert {f.frame_id for f in frames} == set(seen_ids)
+    assert any(f["ts_header_us"] is None for f in [f.model_dump() for f in frames])

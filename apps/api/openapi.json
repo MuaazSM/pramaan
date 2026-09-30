@@ -3527,6 +3527,120 @@
         ]
       }
     },
+    "/api/cases/{cid}/evidence/{eid}/scan": {
+      "post": {
+        "description": "Case-scoped counterpart to ``POST /evidence/{eid}/scan`` \u2014 see\n``verify_evidence_in_case`` above for why (task FIX-4).",
+        "operationId": "scan_evidence_in_case_api_cases__cid__evidence__eid__scan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scan Evidence In Case",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/cases/{cid}/evidence/{eid}/verify": {
+      "post": {
+        "description": "Case-scoped counterpart to ``POST /evidence/{eid}/verify`` (task\nFIX-4): that route has no ``{cid}`` in its path at all, so a\ncontent-derived ``eid`` registered into more than one case is\ninherently ambiguous there (it resolves to whichever case sorts\nfirst \u2014 see ``pramaan_api.real.store._find_case_for_evidence``'s\ndocstring). This route resolves ``eid`` only within ``cid``, so\nregistering identical evidence bytes into two different cases and\nverifying each independently actually verifies each case's own copy.",
+        "operationId": "verify_evidence_in_case_api_cases__cid__evidence__eid__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Evidence In Case",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
     "/api/cases/{cid}/exports": {
       "post": {
         "operationId": "create_export_api_cases__cid__exports_post",
@@ -3702,6 +3816,19 @@
               "exclusiveMinimum": 0,
               "maximum": 500,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Task FIX-4: a stable, deterministic page offset over the same total order the response is sorted in (channel, ts_header_us, payload_offset) \u2014 additive alongside, not a replacement for, `from`/`to` (which filter on ts_header_us and so cannot reach generic-carved frames with no device-clock header, e.g. XSIM's blind carve pass). Combine with the `X-Total-Count` response header to page through every frame regardless of whether it has a timestamp.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Task FIX-4: a stable, deterministic page offset over the same total order the response is sorted in (channel, ts_header_us, payload_offset) \u2014 additive alongside, not a replacement for, `from`/`to` (which filter on ts_header_us and so cannot reach generic-carved frames with no device-clock header, e.g. XSIM's blind carve pass). Combine with the `X-Total-Count` response header to page through every frame regardless of whether it has a timestamp.",
+              "minimum": 0,
+              "title": "Offset",
               "type": "integer"
             }
           }

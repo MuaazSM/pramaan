@@ -108,6 +108,8 @@ def _request_bodies() -> dict[tuple[str, str], dict[str, Any]]:
             },
         },
         ("post", "/api/evidence/{eid}/scan"): {},
+        ("post", "/api/cases/{cid}/evidence/{eid}/scan"): {},
+        ("post", "/api/cases/{cid}/evidence/{eid}/verify"): {},
         ("post", "/api/cases/{cid}/reports"): {},
         ("post", "/api/cases/{cid}/exports"): {"channel": 1},
         ("post", "/api/cases/{cid}/anchors"): {},

@@ -38,6 +38,18 @@ def list_frames(
     from_: int | None = Query(default=None, alias="from"),
     to: int | None = None,
     limit: int = Query(default=500, le=500, gt=0),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        description=(
+            "Task FIX-4: a stable, deterministic page offset over the same total order "
+            "the response is sorted in (channel, ts_header_us, payload_offset) — additive "
+            "alongside, not a replacement for, `from`/`to` (which filter on ts_header_us and "
+            "so cannot reach generic-carved frames with no device-clock header, e.g. XSIM's "
+            "blind carve pass). Combine with the `X-Total-Count` response header to page "
+            "through every frame regardless of whether it has a timestamp."
+        ),
+    ),
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ) -> list[FrameRef]:
@@ -54,7 +66,7 @@ def list_frames(
             to=to,
         )
         response.headers[_TOTAL_COUNT_HEADER] = str(len(frames))
-        return frames[:limit]
+        return frames[offset : offset + limit]
     if real_store.get_case(settings.data_dir, cid) is None:
         raise not_found("case", cid)
     total = real_pipeline.count_frames(
@@ -78,6 +90,7 @@ def list_frames(
         frm=from_,
         to=to,
         limit=limit,
+        offset=offset,
     )
 
 

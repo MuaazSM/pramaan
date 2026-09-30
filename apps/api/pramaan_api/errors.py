@@ -67,6 +67,19 @@ def bad_request(message: str, details: dict[str, Any] | None = None) -> ApiError
     return ApiError(status.HTTP_400_BAD_REQUEST, "bad_request", message, details)
 
 
+def unprocessable(
+    message: str, code: str = "unprocessable", details: dict[str, Any] | None = None
+) -> ApiError:
+    """A well-formed request that the server understood but cannot carry
+    out against the current evidence state (task FIX-4) — e.g. a signed
+    export request for a recording whose frames can't be stream-copied
+    into a valid MP4 (a real, evidence-side gap, not a client input
+    error). Distinct from :func:`bad_request` (400: the request itself
+    was invalid) so the frontend can tell the two apart.
+    """
+    return ApiError(status.HTTP_422_UNPROCESSABLE_ENTITY, code, message, details)
+
+
 async def api_error_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, ApiError)
     body = exc.to_response().model_dump(mode="json")

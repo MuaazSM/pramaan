@@ -54,30 +54,76 @@ def _frames_glob(cdir: Path) -> str:
     return str(cdir / "index" / "frames-*.parquet")
 
 
+def _existing_frame_columns(con: duckdb.DuckDBPyConnection) -> set[str]:
+    """Column names actually present in the ``frames`` view (task FIX-4:
+    ``DESCRIBE`` the *live* Parquet schema rather than assuming every
+    :class:`FrameRef` field is there — a frame-index file written before
+    FIX-3 added ``payload_sha256`` has no such column, and a case dir can
+    mix old- and new-schema per-image files after an upgrade)."""
+    return {row[0] for row in con.execute("DESCRIBE frames").fetchall()}
+
+
+def _frame_select_list(existing: set[str]) -> str:
+    """The ``_FRAME_COLUMNS`` select list, substituting a typed ``NULL``
+    for any column the on-disk schema doesn't have (task FIX-4). Every
+    such field is optional on :class:`FrameRef` (e.g. ``payload_sha256``),
+    so ``NULL`` round-trips to ``None`` there instead of DuckDB raising
+    ``BinderException: Referenced column ... not found``.
+    """
+    return ", ".join(col if col in existing else f"NULL AS {col}" for col in _FRAME_COLUMNS)
+
+
 def _query_frames(
     cdir: Path,
     *,
     where: str = "",
     params: list[Any] | None = None,
     limit: int | None = None,
+    offset: int | None = None,
 ) -> list[dict[str, Any]]:
     """Run a parameterised SELECT over every ``frames-*.parquet`` under
     ``cdir``, returning only :class:`FrameRef`'s own columns (the four
     AI-filled timeline columns are excluded — ``FrameRef`` is
     ``extra="forbid"``). Returns ``[]`` when the case has no frame index
     yet, rather than letting DuckDB error on an empty glob.
+
+    Schema-tolerant (task FIX-4): a column present in the current
+    :class:`FrameRef` but missing from an older on-disk Parquet file (or
+    from *some* of the per-image files under this case, if it was scanned
+    across an upgrade) is selected as ``NULL`` rather than erroring —
+    ``union_by_name=true`` lets the glob itself mix files with different
+    columns, and :func:`_frame_select_list` covers the case where a
+    column is missing from *every* file in the glob (``union_by_name``
+    alone can't invent a column no file has at all).
+
+    ``offset`` (task FIX-4, Q3's validation run: generic-carved frames —
+    e.g. XSIM's blind carve pass — legitimately have no ``ts_header_us``,
+    which made the ``from``/``to`` query params useless as a de-facto
+    pagination cursor for them, since ``_frame_filter_clauses`` correctly
+    excludes NULL-timestamp rows from any ``ts_header_us``-range filter).
+    ``ORDER BY channel, ts_header_us, payload_offset`` is a genuine total
+    order over every row regardless of ``ts_header_us`` being NULL —
+    DuckDB sorts NULLs last, deterministically, for a fixed ``ORDER BY``
+    (confirmed directly) — so a plain, stable ``LIMIT/OFFSET`` over that
+    same order reaches every row, timestamped or not.
     """
     if not any(cdir.glob("index/frames-*.parquet")):
         return []
     con = duckdb.connect(":memory:")
     try:
-        con.execute(f"CREATE VIEW frames AS SELECT * FROM read_parquet('{_frames_glob(cdir)}')")
-        sql = f"SELECT {_FRAME_SELECT} FROM frames"
+        con.execute(
+            f"CREATE VIEW frames AS SELECT * FROM read_parquet("
+            f"'{_frames_glob(cdir)}', union_by_name=true)"
+        )
+        existing = _existing_frame_columns(con)
+        sql = f"SELECT {_frame_select_list(existing)} FROM frames"
         if where:
             sql += f" WHERE {where}"
         sql += " ORDER BY channel, ts_header_us, payload_offset"
         if limit is not None:
             sql += f" LIMIT {int(limit)}"
+        if offset:
+            sql += f" OFFSET {int(offset)}"
         rows = con.execute(sql, params or []).fetchall()
         cols = [d[0] for d in con.description] if con.description else []
         return [dict(zip(cols, row, strict=True)) for row in rows]
@@ -133,7 +179,14 @@ def list_frames(
     to: int | None = None,
     recording_id: str | None = None,
     limit: int = 500,
+    offset: int = 0,
 ) -> list[FrameRef]:
+    """``offset`` (task FIX-4) pages over the deterministic total order
+    (``channel``, ``ts_header_us``, ``payload_offset``) regardless of
+    ``ts_header_us`` being present — see :func:`_query_frames`'s own
+    docstring for why this is needed alongside (not instead of) the
+    ``frm``/``to`` timestamp-range filters, which are unchanged.
+    """
     clauses, params = _frame_filter_clauses(
         channel=channel,
         source=source,
@@ -144,7 +197,11 @@ def list_frames(
         recording_id=recording_id,
     )
     rows = _query_frames(
-        case_dir(data_dir, case_id), where=" AND ".join(clauses), params=params, limit=limit
+        case_dir(data_dir, case_id),
+        where=" AND ".join(clauses),
+        params=params,
+        limit=limit,
+        offset=offset,
     )
     return [FrameRef(**row) for row in rows]
 
@@ -179,7 +236,10 @@ def count_frames(
     )
     con = duckdb.connect(":memory:")
     try:
-        con.execute(f"CREATE VIEW frames AS SELECT * FROM read_parquet('{_frames_glob(cdir)}')")
+        con.execute(
+            f"CREATE VIEW frames AS SELECT * FROM read_parquet("
+            f"'{_frames_glob(cdir)}', union_by_name=true)"
+        )
         sql = "SELECT COUNT(*) FROM frames"
         if clauses:
             sql += f" WHERE {' AND '.join(clauses)}"
@@ -258,12 +318,29 @@ def list_recordings(
 
 
 def get_recording(data_dir: str, recording_id: str) -> Recording | None:
+    """Cross-case lookup — only correct when the caller genuinely has no
+    case_id of its own (task FIX-4: see :func:`get_recording_in_case` for
+    the case-scoped counterpart every caller that *does* have one, e.g. an
+    export, must use instead — a ``recording_id`` is a stable hash of
+    ``(image_id, channel, start, offset)``, so the same evidence bytes
+    registered into two different cases can produce the same id in both
+    cases' own, separately-stored ``recordings`` tables)."""
     for cid in real_store.iter_case_ids(data_dir):
         conn = appdb.case_db(data_dir, cid).conn
         row = conn.execute("SELECT * FROM recordings WHERE id = ?", (recording_id,)).fetchone()
         if row is not None:
             return _row_to_recording(row)
     return None
+
+
+def get_recording_in_case(data_dir: str, case_id: str, recording_id: str) -> Recording | None:
+    """``recording_id`` looked up *only* within ``case_id``'s own
+    ``case.db`` (task FIX-4) — the case-scoped counterpart to
+    :func:`get_recording`, for callers (an export, primarily) that already
+    know which case they're acting on from their own request path."""
+    conn = appdb.case_db(data_dir, case_id).conn
+    row = conn.execute("SELECT * FROM recordings WHERE id = ?", (recording_id,)).fetchone()
+    return _row_to_recording(row) if row is not None else None
 
 
 # --- fingerprint / inferred layout --------------------------------------
@@ -371,11 +448,39 @@ def confirm_inferred_layout(data_dir: str, actor: User, layout_id: str) -> Infer
     Role enforcement (only an examiner/admin may confirm — a reviewer may
     not, docs/02-BACKEND.md §11) is the router's job
     (``Depends(require_examiner_or_admin)``), not this function's.
+
+    Idempotent on a *second* confirm of an already-confirmed layout (task
+    FIX-4, repro in docs/progress/FIX-2.md "Cross-workstream issues" #2):
+    re-running ``_reindex_confirmed_layout`` used to raise
+    ``sqlite3.IntegrityError: FOREIGN KEY constraint failed`` (the first
+    confirm's ``clips`` stage already inserted ``clips`` rows referencing
+    the ``recordings`` this would try to delete and re-insert — see
+    ``pramaan_worker.stages.parse_inferred_layout``, now hardened
+    separately to delete children first). Belt-and-braces here too: the
+    layout and underlying evidence haven't changed between two confirms of
+    the *same* layout id, so re-running the whole reindex would only ever
+    reproduce byte-identical output (CLAUDE.md rule 5) — a genuine no-op.
+    Returns the existing confirmation unchanged and records a distinct,
+    honestly-labelled ``layout.confirm_noop`` audit entry (not a second
+    ``layout.confirmed``, which would misleadingly imply new confirmation
+    work happened) rather than silently doing nothing unaudited.
     """
     found = get_inferred_layout_by_id(data_dir, layout_id)
     if found is None:
         return None
     case_id, layout = found
+    if layout.confirmed_by is not None:
+        real_store.append_audit(
+            data_dir,
+            case_id,
+            actor=actor.username,
+            role=actor.role,
+            action="layout.confirm_noop",
+            object_type="inferred_layout",
+            object_id=layout_id,
+            details={"image_id": layout.image_id, "already_confirmed_by": layout.confirmed_by},
+        )
+        return layout
     updated = set_inferred_layout_confirmed_by(data_dir, case_id, layout_id, actor.username)
     real_store.append_audit(
         data_dir,
@@ -404,7 +509,8 @@ def _reindex_confirmed_layout(
     still applies and is still audited — a confirm action itself must
     never fail just because the reindex found nothing to do.
     """
-    image = real_store.get_evidence(data_dir, layout.image_id)
+    # Case-scoped (task FIX-4): this function already has `case_id`.
+    image = real_store.get_evidence_in_case(data_dir, case_id, layout.image_id)
     if image is None:
         return
 
@@ -446,8 +552,10 @@ def frame_hex_view(data_dir: str, frame_id: str, before: int, after: int) -> dic
     found = get_frame_with_case(data_dir, frame_id)
     if found is None:
         return None
-    _case_id, frame = found
-    image = real_store.get_evidence(data_dir, frame.image_id)
+    case_id, frame = found
+    # Case-scoped (task FIX-4): `get_frame_with_case` already resolved
+    # which case this frame belongs to.
+    image = real_store.get_evidence_in_case(data_dir, case_id, frame.image_id)
     if image is None:
         return None
 
@@ -539,7 +647,8 @@ def frame_thumbnail_bytes(data_dir: str, frame_id: str) -> bytes | None:
             return None
         source_frame = FrameRef(**rows[0])
 
-    image = real_store.get_evidence(data_dir, frame.image_id)
+    # Case-scoped (task FIX-4): `case_id` was already resolved above.
+    image = real_store.get_evidence_in_case(data_dir, case_id, frame.image_id)
     if image is None:
         return None
 

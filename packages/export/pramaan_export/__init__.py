@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pramaan_export.builder import ExportResult, NoFramesToExport, build_export
+from pramaan_export.mux import ExportMuxError
 from pramaan_export.verify import VerifyOutcome, verify_export_bytes
 
 __all__ = [
+    "ExportMuxError",
     "ExportResult",
     "NoFramesToExport",
     "VerifyOutcome",

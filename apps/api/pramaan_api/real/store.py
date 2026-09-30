@@ -525,6 +525,23 @@ def iter_case_ids(data_dir: str) -> list[str]:
 
 
 def _find_case_for_evidence(data_dir: str, evidence_id: str) -> str | None:
+    """First case (sorted dir order) whose own ``evidence_images`` has a
+    row for ``evidence_id``.
+
+    Only correct when the caller has **no other way to know which case is
+    meant** (task FIX-4: the same content-derived ``evidence_id`` is, by
+    design, the same value in every case it's registered into — each
+    case's own ``case.db`` file already keeps its own row correctly
+    isolated at the storage layer, per CLAUDE.md rule 2). A caller that
+    already has ``case_id`` from its own request path (e.g. every export/
+    frame/reindex helper below) must use :func:`get_evidence_in_case`
+    instead of this cross-case scan — using this one there would silently
+    resolve to *whichever* other case happens to sort first and also
+    contain the same evidence, not the case actually being acted on. This
+    function remains correct only for the genuinely case-agnostic public
+    routes (docs/02-BACKEND.md: ``GET/POST /evidence/{eid}/...`` has no
+    ``{cid}`` in its path at all).
+    """
     for candidate in iter_case_ids(data_dir):
         guarded = appdb.case_db(data_dir, candidate)
         row = guarded.conn.execute(
@@ -551,6 +568,24 @@ def get_evidence_with_case(data_dir: str, evidence_id: str) -> tuple[str, Eviden
 def get_evidence(data_dir: str, evidence_id: str) -> EvidenceImage | None:
     found = get_evidence_with_case(data_dir, evidence_id)
     return found[1] if found is not None else None
+
+
+def get_evidence_in_case(data_dir: str, case_id: str, evidence_id: str) -> EvidenceImage | None:
+    """``evidence_id`` looked up *only* within ``case_id``'s own
+    ``case.db`` (task FIX-4): the case-scoped counterpart to
+    :func:`get_evidence`/:func:`get_evidence_with_case`, for every caller
+    that already knows which case it's acting on (an export, a frame/clip
+    lookup resolved via :func:`~pramaan_api.real.pipeline_store
+    .get_frame_with_case`, a confirmed-layout reindex, ...). Registering
+    the same evidence bytes into two different cases gives each case its
+    own, separately-stored row with the same content-derived id — this
+    always resolves the *requested* case's row, never another case's.
+    """
+    guarded = appdb.case_db(data_dir, case_id)
+    row = guarded.conn.execute(
+        "SELECT * FROM evidence_images WHERE id = ? AND case_id = ?", (evidence_id, case_id)
+    ).fetchone()
+    return _row_to_evidence(row) if row is not None else None
 
 
 def _mark_evidence_verified(data_dir: str, case_id: str, evidence_id: str) -> None:

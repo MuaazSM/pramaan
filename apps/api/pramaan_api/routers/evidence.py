@@ -145,6 +145,87 @@ def scan_evidence(
     )
 
 
+@router.post("/cases/{cid}/evidence/{eid}/verify", response_model=Job, status_code=202)
+def verify_evidence_in_case(
+    cid: str,
+    eid: str,
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+    _csrf: None = Depends(require_csrf),
+) -> Job:
+    """Case-scoped counterpart to ``POST /evidence/{eid}/verify`` (task
+    FIX-4): that route has no ``{cid}`` in its path at all, so a
+    content-derived ``eid`` registered into more than one case is
+    inherently ambiguous there (it resolves to whichever case sorts
+    first — see ``pramaan_api.real.store._find_case_for_evidence``'s
+    docstring). This route resolves ``eid`` only within ``cid``, so
+    registering identical evidence bytes into two different cases and
+    verifying each independently actually verifies each case's own copy.
+    """
+    if settings.stub_mode:
+        if store.get_case(cid) is None:
+            raise not_found("case", cid)
+        image = store.get_evidence(eid)
+        if image is None:
+            raise not_found("evidence", eid)
+        return store.create_job(cid, eid, "verify", ["hash_verify"])
+
+    if real_store.get_case(settings.data_dir, cid) is None:
+        raise not_found("case", cid)
+    image = real_store.get_evidence_in_case(settings.data_dir, cid, eid)
+    if image is None:
+        raise not_found("evidence", eid)
+    return real_store.run_evidence_job(
+        settings.data_dir,
+        settings.job_backend,
+        settings.redis_url,
+        user,
+        cid,
+        eid,
+        image,
+        "verify",
+        ["hash_verify"],
+    )
+
+
+@router.post("/cases/{cid}/evidence/{eid}/scan", response_model=Job, status_code=202)
+def scan_evidence_in_case(
+    cid: str,
+    eid: str,
+    body: ScanRequest,
+    user: User = Depends(require_examiner_or_admin),
+    settings: Settings = Depends(get_settings),
+    _csrf: None = Depends(require_csrf),
+) -> Job:
+    """Case-scoped counterpart to ``POST /evidence/{eid}/scan`` — see
+    ``verify_evidence_in_case`` above for why (task FIX-4)."""
+    stages = body.stages or list(STAGE_NAMES)
+    if settings.stub_mode:
+        if store.get_case(cid) is None:
+            raise not_found("case", cid)
+        image = store.get_evidence(eid)
+        if image is None:
+            raise not_found("evidence", eid)
+        return store.create_job(cid, eid, "scan", stages)
+
+    if real_store.get_case(settings.data_dir, cid) is None:
+        raise not_found("case", cid)
+    image = real_store.get_evidence_in_case(settings.data_dir, cid, eid)
+    if image is None:
+        raise not_found("evidence", eid)
+    return real_store.run_evidence_job(
+        settings.data_dir,
+        settings.job_backend,
+        settings.redis_url,
+        user,
+        cid,
+        eid,
+        image,
+        "scan",
+        stages,
+    )
+
+
 @router.get("/evidence/{eid}/fingerprint", response_model=list[VendorMatch])
 def fingerprint(
     eid: str, user: User = Depends(get_current_user), settings: Settings = Depends(get_settings)

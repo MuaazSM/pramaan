@@ -49,5 +49,14 @@ def open_case(case_dir: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # Task FIX-4 / FIX-2 "Cross-workstream issues" #3: two separate
+    # processes (e.g. two concurrent `just demo` runs sharing the same
+    # data dir) each hold their own connection to this file, so SQLite's
+    # own file lock — not just this process's in-memory lock — is what
+    # serialises them. Without a busy timeout, a writer that loses that
+    # race gets an immediate `OperationalError: database is locked`
+    # instead of simply waiting the (typically sub-second) instant for the
+    # other writer to commit.
+    conn.execute("PRAGMA busy_timeout = 5000")
     _migrate(conn)
     return conn

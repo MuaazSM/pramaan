@@ -200,6 +200,19 @@ def parse_index(ctx: StageContext) -> StageResult:
 
     conn = open_case(ctx.case_dir)
     try:
+        # Delete child `clips` rows before their parent `recordings` rows
+        # (task FIX-4 "Cross-workstream issues"/FIX-2 #2): a re-verify of
+        # the same evidence re-runs this stage against `recordings` that
+        # may already have `clips` referencing them
+        # (`clips.recording_id REFERENCES recordings(id)`, no cascade) —
+        # deleting the parent first raises `sqlite3.IntegrityError:
+        # FOREIGN KEY constraint failed` instead of the intended
+        # regenerate-from-scratch idempotency.
+        conn.execute(
+            "DELETE FROM clips WHERE recording_id IN"
+            " (SELECT id FROM recordings WHERE image_id = ?)",
+            (ctx.image_id,),
+        )
         conn.execute("DELETE FROM recordings WHERE image_id = ?", (ctx.image_id,))
         for rec in sorted(recordings, key=lambda r: (r.channel, r.start_ts_us or 0, r.id)):
             conn.execute(
@@ -443,6 +456,16 @@ def parse_inferred_layout(ctx: StageContext, layout: InferredLayout) -> StageRes
 
     conn = open_case(ctx.case_dir)
     try:
+        # Same FK-ordering fix as `parse_index` above (task FIX-4 /
+        # FIX-2 "Cross-workstream issues" #2): a second confirm of the
+        # same inferred layout re-runs this stage against `recordings`
+        # that the first confirm's `clips` stage already built `clips`
+        # rows against.
+        conn.execute(
+            "DELETE FROM clips WHERE recording_id IN"
+            " (SELECT id FROM recordings WHERE image_id = ? AND source = 'inferred')",
+            (ctx.image_id,),
+        )
         conn.execute(
             "DELETE FROM recordings WHERE image_id = ? AND source = 'inferred'", (ctx.image_id,)
         )

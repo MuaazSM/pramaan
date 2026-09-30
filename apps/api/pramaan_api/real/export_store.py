@@ -10,10 +10,16 @@ from typing import Any
 from pramaan_core.evidence import EvidenceReader
 from pramaan_core.models import FrameRef
 from pramaan_core.timeutil import utc_now_iso
-from pramaan_export import ExportResult, NoFramesToExport, VerifyOutcome, build_export
+from pramaan_export import (
+    ExportMuxError,
+    ExportResult,
+    NoFramesToExport,
+    VerifyOutcome,
+    build_export,
+)
 from pramaan_export import verify_export_bytes as _verify_export_bytes
 
-from pramaan_api.errors import bad_request, not_found
+from pramaan_api.errors import bad_request, not_found, unprocessable
 from pramaan_api.real import appdb
 from pramaan_api.real import pipeline_store as pstore
 from pramaan_api.real import store as real_store
@@ -57,7 +63,14 @@ def _select_frames(
     (see docs/progress/B3.md "Known gaps").
     """
     if recording_id is not None:
-        recording = pstore.get_recording(data_dir, recording_id)
+        # Case-scoped (task FIX-4): `recording_id` is a stable hash of
+        # (image_id, channel, start, offset), so the same evidence bytes
+        # registered into a *different* case can produce the same id
+        # there too. `_select_frames` already has the case_id this export
+        # request is actually for (`/cases/{cid}/exports`) -- use it,
+        # rather than `get_recording`'s cross-case scan silently resolving
+        # to whichever other case happens to sort first.
+        recording = pstore.get_recording_in_case(data_dir, case_id, recording_id)
         if recording is None:
             raise not_found("recording", recording_id)
         frames = pstore.list_frames(
@@ -102,7 +115,9 @@ def create_export(
         from_norm_us=from_norm_us,
         to_norm_us=to_norm_us,
     )
-    image = real_store.get_evidence(data_dir, image_id)
+    # Case-scoped for the same reason as `get_recording_in_case` above —
+    # `create_export` already has this request's `case_id`.
+    image = real_store.get_evidence_in_case(data_dir, case_id, image_id)
     if image is None:
         raise not_found("evidence", image_id)
 
@@ -130,6 +145,26 @@ def create_export(
             )
         except NoFramesToExport as exc:
             raise bad_request(str(exc)) from exc
+        except ExportMuxError as exc:
+            # Task FIX-4: this used to propagate as an uncaught 500 (real
+            # repro: a live HWSIM recording whose carved frame stream
+            # starts mid-GOP with no SPS/PPS — ffmpeg's stream-copy remux
+            # can't handle that; the underlying missing-SPS/PPS gap is
+            # CORE FIX-5's, not this one's, to fix). The request itself
+            # was well-formed and the evidence is genuinely readable — the
+            # server just can't produce a *valid* signed export from these
+            # particular frames yet, which is a 422, not a 500 or a 400.
+            raise unprocessable(
+                "This recording could not be exported: its video stream could not be"
+                " remuxed without re-encoding (CLAUDE.md rule 3 forbids re-encoding"
+                f" original video). {exc}",
+                code="export_not_playable",
+                details={
+                    "image_id": image_id,
+                    "recording_id": recording_id,
+                    "channel": resolved_channel,
+                },
+            ) from exc
     finally:
         reader.close()
 

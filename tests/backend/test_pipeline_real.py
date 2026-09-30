@@ -542,3 +542,77 @@ def test_scan_degrades_gracefully_when_a_stage_parser_is_unregistered(
     assert log_events == []
     deletions = real_client.get(f"/api/cases/{case['id']}/deletions").json()
     assert deletions == []
+
+
+def test_confirm_inferred_layout_twice_is_idempotent_not_a_500(
+    real_client: TestClient,
+    tmp_path: Path,
+    real_evidence_dir: Path,
+    real_settings: Settings,
+) -> None:
+    """Task FIX-4 (repro in docs/progress/FIX-2.md "Cross-workstream
+    issues" #2): a *second* ``POST /inferred-layouts/{lid}/confirm`` of the
+    same layout used to raise ``sqlite3.IntegrityError: FOREIGN KEY
+    constraint failed`` — the first confirm's ``clips`` stage stream-copies
+    a real MP4 and inserts a ``clips`` row referencing the ``recordings``
+    the reindex's ``DELETE FROM recordings ... AND source = 'inferred'``
+    then tries to remove and re-insert on the second confirm. Needs a real,
+    ffmpeg-decodable payload (this module's two-GOP fixture) so the
+    ``clips`` stage actually inserts a row instead of catching a remux
+    failure per-recording and inserting nothing. A re-confirm must now be a
+    genuine no-op: same ``confirmed_by``, same recordings, one
+    ``layout.confirmed`` audit entry (not two) plus one
+    ``layout.confirm_noop``, never a 500.
+    """
+    from pramaan_api.real import appdb
+
+    case = _create_case(real_client, "CR-FIX4-RECONFIRM")
+    image_path = real_evidence_dir / "xsim_fake.img"
+    frame_specs = _build_fake_image(tmp_path, image_path)
+
+    ev_resp = real_client.post(
+        f"/api/cases/{case['id']}/evidence",
+        json={"path": str(image_path), "label": "fake xsim disk", "intake": _intake_body()},
+    )
+    assert ev_resp.status_code == 201, ev_resp.text
+    image = ev_resp.json()
+
+    _recording, frames = _finalise(image["id"], frame_specs)
+
+    class _FakeInferredParser:
+        def iter_frames(self, reader: Any, image_id: str) -> list[FrameRef]:
+            return list(frames)
+
+    registry.register_inferred_parser_factory(lambda layout: _FakeInferredParser())
+
+    layout_id = content_id("layout", {"image_id": image["id"]})
+    guarded = appdb.case_db(real_settings.data_dir, case["id"])
+    with guarded.lock:
+        guarded.conn.execute(
+            "INSERT INTO inferred_layouts (id, image_id, header_len, magic, fields, codec,"
+            " confirmed_by) VALUES (?,?,?,?,?,?,?)",
+            (layout_id, image["id"], 8, None, "[]", "h264", None),
+        )
+        guarded.conn.commit()
+
+    confirm1 = real_client.post(f"/api/inferred-layouts/{layout_id}/confirm")
+    assert confirm1.status_code == 200, confirm1.text
+    assert confirm1.json()["confirmed_by"] == "examiner"
+
+    recordings_after_first = real_client.get(f"/api/cases/{case['id']}/recordings").json()
+    assert len(recordings_after_first) > 0
+
+    confirm2 = real_client.post(f"/api/inferred-layouts/{layout_id}/confirm")
+    assert confirm2.status_code == 200, confirm2.text
+    assert confirm2.json()["confirmed_by"] == "examiner"
+
+    recordings_after_second = real_client.get(f"/api/cases/{case['id']}/recordings").json()
+    assert {r["id"] for r in recordings_after_second} == {
+        r["id"] for r in recordings_after_first
+    }
+    assert len(recordings_after_second) == len(recordings_after_first)
+
+    audit = real_client.get(f"/api/cases/{case['id']}/audit").json()
+    actions = [e["action"] for e in audit["items"]]
+    assert actions.count("layout.confirmed") == 1
+    assert actions.count("layout.confirm_noop") == 1

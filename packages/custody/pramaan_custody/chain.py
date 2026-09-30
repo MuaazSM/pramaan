@@ -111,7 +111,26 @@ def append_entry(
 
     Callers must hold whatever lock guards ``conn`` for this case — ``seq``
     is computed as ``MAX(seq) + 1`` and must never race another writer.
+
+    That in-process lock only protects concurrent *threads*; two separate
+    processes sharing the same case dir (task FIX-4 / FIX-2 "Cross-
+    workstream issues" #3: two concurrent ``just demo`` runs against the
+    same ``data/demo/``) each get their own connection and their own lock,
+    so the tail read and the insert weren't atomic across processes —
+    observed as ``sqlite3.IntegrityError: UNIQUE constraint failed:
+    audit_log.seq``. An explicit ``BEGIN IMMEDIATE`` (skipped if the
+    connection is already mid-transaction, so this stays a no-op for any
+    caller that already manages its own) acquires SQLite's RESERVED lock
+    before the tail ``SELECT`` runs rather than only before the ``INSERT``
+    (all Python's own implicit-transaction handling would otherwise
+    cover), so a second process's own ``BEGIN IMMEDIATE`` blocks until this
+    one commits (both ``pramaan_core.db.open_case`` and
+    ``pramaan_api.real.appdb``'s connections set a busy timeout, so that
+    second writer waits instead of raising immediately).
     """
+    own_transaction = not conn.in_transaction
+    if own_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     tail = _chain_tail(conn)
     seq = (int(tail["seq"]) + 1) if tail is not None else 1
     prev_hash = str(tail["entry_hash"]) if tail is not None else None
