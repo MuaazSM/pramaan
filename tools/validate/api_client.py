@@ -185,3 +185,59 @@ def get_json(client: httpx.Client, path: str, **params: Any) -> Any:
         return None
     resp.raise_for_status()
     return resp.json()
+
+
+TOTAL_COUNT_HEADER = "X-Total-Count"
+
+
+def get_json_with_total(client: httpx.Client, path: str, **params: Any) -> tuple[Any, int]:
+    """Like :func:`get_json`, but also returns the *unpaginated* match count
+    from the additive ``X-Total-Count`` response header (task FIX-1) — the
+    500-row page cap on the body is unchanged. Falls back to ``len(body)``
+    if the header is absent (e.g. stub mode, or an older API build)."""
+    resp = client.get(path, params=params)
+    if resp.status_code == 404:
+        return None, 0
+    resp.raise_for_status()
+    body = resp.json()
+    header = resp.headers.get(TOTAL_COUNT_HEADER)
+    total = int(header) if header is not None else len(body)
+    return body, total
+
+
+def fetch_all_frames(
+    client: httpx.Client, cases_path: str, *, channel: int, source: str, page_limit: int = 500
+) -> tuple[list[dict[str, Any]], int, bool]:
+    """Every frame for one ``(channel, source)`` combination on
+    ``GET {cases_path}/frames``, walking multiple pages via a ``ts_header_us``
+    cursor (``from``) when the true count exceeds ``page_limit`` (task
+    FIX-1's ``X-Total-Count`` header makes the true count knowable; there is
+    no offset/cursor param otherwise). Frames are deduplicated by
+    ``payload_offset`` (harmless — the cursor is inclusive, to never skip
+    rows tied at the same ``ts_header_us``).
+
+    Returns ``(frames, total_count, truncated)``; ``truncated`` is true only
+    if the server-reported total could not be fully retrieved (e.g. many
+    frames share one ``ts_header_us`` and/or lack one entirely, which the
+    ``from`` filter can't page past — docs/02-BACKEND.md §4's ``frm``
+    clause excludes null-timestamp rows from any windowed page after the
+    first).
+    """
+    collected: dict[int, dict[str, Any]] = {}
+    cursor: int | None = None
+    total = 0
+    for _ in range(200):  # safety cap against a pathological non-advancing cursor
+        params: dict[str, Any] = {"channel": channel, "source": source, "limit": page_limit}
+        if cursor is not None:
+            params["from"] = cursor
+        page, total = get_json_with_total(client, f"{cases_path}/frames", **params)
+        page = page or []
+        for f in page:
+            collected[f["payload_offset"]] = f
+        if len(page) < page_limit:
+            break
+        last_ts = page[-1].get("ts_header_us")
+        if last_ts is None or (cursor is not None and last_ts <= cursor):
+            break
+        cursor = last_ts
+    return list(collected.values()), total, len(collected) < total
