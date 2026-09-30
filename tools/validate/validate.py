@@ -187,6 +187,63 @@ def ffprobe_playable(data: bytes) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
+# Tier B inferred-layout confirmation (task FIX-14)
+# ---------------------------------------------------------------------------
+
+
+def confirm_inferred_layout_if_present(
+    client: httpx.Client, evidence_id: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """If ``evidence_id`` has an inferred (Tier B) layout, confirm it via
+    the real API as the logged-in examiner (``POST
+    /inferred-layouts/{lid}/confirm``) — the same workflow step an examiner
+    performs in the UI, and the same one ``tools/demo/demo.py``'s
+    ``try_confirm_inferred_layout`` performs for ``xsim_unknown``.
+
+    Task FIX-12 made this route synchronous and made it re-run every
+    downstream stage that depends on the confirmed layout's ``recordings``
+    (``frame_index``, ``logs``, ``deletion_verdict``, ``clips``,
+    ``timeline``, ``motion``) inline before the response returns — so by
+    the time this function returns, ``GET .../recordings``,
+    ``.../deletions``, ``.../frames``, ``.../clock-models`` and
+    ``.../motion`` for this image all reflect the confirmed layout, not the
+    empty pre-confirm state the automatic ``/scan`` alone leaves behind for
+    any Tier B image (docs/progress/FIX-11.md, FIX-12.md). No separate
+    poll/wait is needed for that reason.
+
+    A previously-confirmed layout (e.g. a re-run against a data dir that
+    already has one) is left alone — FIX-4's confirm endpoint is itself
+    idempotent (a second confirm is a documented no-op), so calling this
+    unconditionally is safe, but skipping an already-confirmed layout keeps
+    this a single, honest GET+at-most-one-POST per image.
+
+    Returns ``(layout, error)``: ``layout`` is ``None`` (and ``error`` is
+    ``None``) when the image simply has no inferred layout at all (every
+    non-Tier-B image in this corpus) — not an error. ``error`` is a short
+    string, never raised, when a layout exists but confirming it failed —
+    mirrors ``demo.py``'s best-effort treatment so one bad confirm can't
+    abort the whole image's scoring; the caller records it as a run error.
+    """
+    resp = client.get(f"/api/evidence/{evidence_id}/inferred-layout")
+    if resp.status_code == 404:
+        return None, None
+    if resp.status_code >= 400:
+        return None, f"GET inferred-layout: {resp.status_code} {resp.text[:200]}"
+    layout = resp.json()
+    if layout.get("confirmed_by") is not None:
+        return layout, None
+    lid = layout.get("id")
+    if not lid:
+        return None, f"inferred-layout response had no id: {layout}"
+    confirm_resp = client.post(
+        f"/api/inferred-layouts/{lid}/confirm", headers=api.csrf_headers(client)
+    )
+    if confirm_resp.status_code >= 400:
+        return None, f"POST confirm ({lid}): {confirm_resp.status_code} {confirm_resp.text[:200]}"
+    return confirm_resp.json(), None
+
+
+# ---------------------------------------------------------------------------
 # Per-image processing
 # ---------------------------------------------------------------------------
 
@@ -278,6 +335,18 @@ def process_image(
             "stages": stage_statuses,
         },
     )
+
+    # --- confirm any Tier B inferred layout before scoring anything else --
+    # Every metric below (recordings, frames, deletions, clock models,
+    # motion) reads case-scoped data that stays empty/stale for a Tier B
+    # image until its inferred layout is confirmed (FIX-11/FIX-12) — so
+    # this must run before any of those queries, exactly once per image,
+    # as an examiner would in the real workflow.
+    _layout_after_confirm, _confirm_error = confirm_inferred_layout_if_present(
+        client, evidence_id
+    )
+    if _confirm_error is not None:
+        result.errors.append(f"inferred-layout confirm failed: {_confirm_error}")
 
     channels = [c["channel"] for c in truth.get("channels", [])] or [1, 2, 3, 4]
 
@@ -831,6 +900,19 @@ def process_image(
         det_job = api.run_job_in_case(client, det_case_id, det_evidence_id, "scan")
         det_job = api.poll_job(client, det_job["id"], deadline)
 
+        # Same Tier B confirmation the primary case's run above performed —
+        # needed here too, else a confirmed primary layout would be
+        # compared against this determinism copy's still-unconfirmed
+        # (empty recordings/deletions) one and every content-match check
+        # below would spuriously fail for xsim_format/xsim_unknown.
+        _det_layout_after_confirm, _det_confirm_error = confirm_inferred_layout_if_present(
+            client, det_evidence_id
+        )
+        if _det_confirm_error is not None:
+            result.errors.append(
+                f"determinism copy: inferred-layout confirm failed: {_det_confirm_error}"
+            )
+
         det_recordings = api.get_json(client, f"/api/cases/{det_case_id}/recordings") or []
         det_deletions = api.get_json(client, f"/api/cases/{det_case_id}/deletions") or []
         det_clock_models = api.get_json(client, f"/api/cases/{det_case_id}/clock-models") or []
@@ -1131,8 +1213,29 @@ def write_markdown(
     )
     lines.append("")
 
-    lines.append("## Methodology notes / equivalence rules (task FIX-11)")
+    lines.append("## Methodology notes / equivalence rules (tasks FIX-11, FIX-14)")
     lines.append("")
+    lines.append(
+        "- **Tier B (inferred-layout) images are scored after examiner confirmation** (task "
+        "FIX-14). For every image whose fingerprint yields an inferred layout "
+        "(`GET /api/evidence/{eid}/inferred-layout` returns one — in this corpus, `xsim_format` "
+        "and `xsim_unknown`), the harness confirms it via `POST /inferred-layouts/{lid}/confirm` "
+        "as the logged-in examiner, the same workflow step an examiner performs in the UI and "
+        "the same one `tools/demo/demo.py` performs for `xsim_unknown`, immediately after the "
+        "automatic `/scan` job completes and before any other metric is queried. Task FIX-12 "
+        "made that confirm route synchronous and made it re-run every downstream stage that "
+        "depends on the confirmed layout's `recordings` (`frame_index`, `logs`, "
+        "`deletion_verdict`, `clips`, `timeline`, `motion`) inline before responding, so by the "
+        "time the confirm call returns, `recordings`/`deletions`/`frames`/`clock-models`/"
+        "`motion` for that image all reflect the confirmed layout rather than the empty/stale "
+        "state the automatic scan alone leaves behind for any Tier B image. Every metric below "
+        "for a Tier B image — including `recording_parse`, `deleted_frame_recovery`, "
+        "`recovery_precision`, `timestamp_accuracy`, `deletion_method`, `deletion_actor`, "
+        "`motion_f1` and `playable_clips` — is therefore scored against post-confirmation data, "
+        "not pre-confirmation data. The **determinism** check (below) performs the identical "
+        "confirmation on its independent second-case copy of the same image, so both copies are "
+        "compared on equal (post-confirm) footing."
+    )
     lines.append(
         "- **Determinism** registers the identical evidence bytes into a second, independent "
         "case and scans it there too (task FIX-4's case-scoped `/cases/{cid}/evidence/{eid}"
@@ -1275,38 +1378,14 @@ def main() -> int:
 
     proc = api.start_api(REPO_ROOT, DATA_DIR, [CORPUS_IMAGES], port, log_path)
     results: list[ImageResult] = []
-    # Two previously-hardcoded static entries were removed here (task FIX-11):
-    # the evidence-to-case resolution ambiguity and the export-creation 500
-    # were both real bugs found by earlier validation runs, but both are
-    # fixed now (task FIX-4: case-scoped /cases/{cid}/evidence/{eid}/scan|
-    # verify routes for the former; a caught ExportMuxError -> 422 for the
-    # latter) — see docs/progress/FIX-4.md. One NEW confirmed bug is added
-    # below in its place (task FIX-11): it explains why xsim_format/
-    # xsim_unknown's `deletion_method`/`deletion_actor` still can't be
-    # scored via the public API even though packages/recovery's own
-    # verdict logic is correct (docs/progress/FIX-7.md) — the rest of this
-    # list is populated purely from what THIS run actually observes below.
-    cross_workstream_issues: list[str] = [
-        "BACKEND (apps/api/pramaan_api/real/pipeline_store.py::_reindex_confirmed_layout): "
-        "confirming a Tier B/inferred layout (POST /inferred-layouts/{lid}/confirm) re-runs "
-        "parse_inferred_layout, frame_index and clips (populating the `recordings` table for "
-        "the image) but never re-runs deletion_verdict — so `GET /cases/{cid}/deletions` "
-        "stays exactly what it was computed as during the automatic /scan (deletion_verdict "
-        "ran there with an empty `recordings` table for any Tier B image, since recordings "
-        "are only populated by confirmation, which happens later/on demand), forever, "
-        "regardless of confirmation. Repro (confirmed directly against xsim_format.img this "
-        "run): register+scan -> GET .../recordings returns 0 rows, GET .../deletions returns "
-        "[]; POST /inferred-layouts/{lid}/confirm -> 200; GET .../recordings now returns 12 "
-        "rows (the confirm-triggered reindex worked); GET .../deletions still returns [] "
-        "(expected: 4 findings, one per channel, method='format' per "
-        "docs/progress/FIX-7.md's own direct-core-level test of this exact image). This is "
-        "why this harness's deletion_method/deletion_actor metrics score 0%/not-available for "
-        "both XSIM images even after task FIX-11's matching-logic fix (which resolved a "
-        "separate, harness-side issue on hwsim_overwrite) — there is nothing in the API "
-        "response to match against. Not fixed here (apps/api is BACKEND's path); the fix is "
-        "presumably adding deletion_verdict to _reindex_confirmed_layout's stage list, "
-        "mirroring what the automatic /scan pipeline already does at stage 8.",
-    ]
+    # No static entries here (task FIX-14 removed the last one: BACKEND's
+    # `_reindex_confirmed_layout` not re-running `deletion_verdict` on
+    # confirm, reported by FIX-11, fixed and tested by FIX-12, and no longer
+    # reproduces now that this harness confirms every Tier B image's
+    # inferred layout before scoring — see
+    # `confirm_inferred_layout_if_present` above). This list is populated
+    # purely from what THIS run actually observes below.
+    cross_workstream_issues: list[str] = []
     try:
         try:
             api.wait_healthy(base_url, proc, log_path, deadline)
