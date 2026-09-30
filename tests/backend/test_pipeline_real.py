@@ -616,3 +616,168 @@ def test_confirm_inferred_layout_twice_is_idempotent_not_a_500(
     actions = [e["action"] for e in audit["items"]]
     assert actions.count("layout.confirmed") == 1
     assert actions.count("layout.confirm_noop") == 1
+
+
+def test_confirm_reruns_every_downstream_stage_once_via_fake_registered_stages(
+    real_client: TestClient,
+    tmp_path: Path,
+    real_evidence_dir: Path,
+    real_settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Task FIX-12 (repro: docs/progress/FIX-11.md "Cross-workstream
+    issues" #1 — confirming a Tier B layout never re-ran ``deletion_verdict``,
+    so ``GET /cases/{cid}/deletions`` stayed whatever it was computed as
+    during the automatic ``/scan``, empty for any Tier B image at that
+    point). Confirming must now re-run *every* stage downstream of parsing
+    that depends on ``recordings``/frames — ``frame_index``, ``logs``,
+    ``deletion_verdict``, ``clips``, and the AI-registered ``timeline``/
+    ``motion`` stages — in pipeline order, exactly once per confirm.
+
+    ``logs``/``deletion_verdict`` are swapped for small call-counting fakes
+    through ``pramaan_worker.registry`` (the same hook the rest of this file
+    uses). ``timeline``/``motion`` are AI-owned and reached only through
+    ``pramaan_worker.stages.default_stages()`` (docs/03-AI-TIMELINE.md's own
+    ``register_stage`` hook) — this test monkeypatches that one function for
+    its own duration (auto-reverted by ``monkeypatch``, never touching the
+    real ``timeline``/``motion`` stages other tests in this process rely on)
+    rather than calling ``pramaan_worker.stages.register_stage`` directly,
+    which would permanently clobber the real AI registrations for the rest
+    of the test session (module-level ``register_stage`` calls in
+    ``apps/api/pramaan_api/routers/{timeline,analytics}.py`` only run once,
+    at first import).
+    """
+    from pramaan_api.real import appdb
+    from pramaan_core.models import DeletionFinding, LogEvent
+    from pramaan_worker import stages as stages_module
+    from pramaan_worker.runner import StageContext, StageResult
+
+    case = _create_case(real_client, "CR-FIX12-DOWNSTREAM")
+    image_path = real_evidence_dir / "xsim_fake_downstream.img"
+    frame_specs = _build_fake_image(tmp_path, image_path)
+
+    ev_resp = real_client.post(
+        f"/api/cases/{case['id']}/evidence",
+        json={"path": str(image_path), "label": "fake xsim disk", "intake": _intake_body()},
+    )
+    assert ev_resp.status_code == 201, ev_resp.text
+    image = ev_resp.json()
+
+    _recording, frames = _finalise(image["id"], frame_specs)
+
+    class _FakeInferredParser:
+        def iter_frames(self, reader: Any, image_id: str) -> list[FrameRef]:
+            return list(frames)
+
+    registry.register_inferred_parser_factory(lambda layout: _FakeInferredParser())
+
+    calls = {"logs": 0, "deletion_verdict": 0, "timeline": 0, "motion": 0}
+
+    def fake_log_parser(reader: Any, family: str) -> list[LogEvent]:
+        calls["logs"] += 1
+        return []
+
+    def fake_deletion_analyzer(
+        *,
+        image_id: str,
+        recordings: list[Recording],
+        frames: list[FrameRef],
+        log_events: list[LogEvent],
+    ) -> list[DeletionFinding]:
+        calls["deletion_verdict"] += 1
+        # The whole point of FIX-12: by the time this runs, confirm's own
+        # parse_inferred_layout must already have populated `recordings` —
+        # the pre-FIX-12 bug ran deletion_verdict against whatever the
+        # automatic /scan had (empty, for a Tier B image at that point).
+        assert recordings, "deletion analyzer must see the confirm-populated recordings"
+        return [
+            DeletionFinding(
+                id=content_id("del", {"image_id": image_id, "n": calls["deletion_verdict"]}),
+                image_id=image_id,
+                channel=0,
+                start_ts_us=0,
+                end_ts_us=100_000,
+                method="format",
+                actor=None,
+                action_ts_us=None,
+                frames_recovered=1,
+                bytes_recovered=1,
+                confidence=0.9,
+                reasons=["fake finding for test_pipeline_real"],
+                evidence_refs=[],
+            )
+        ]
+
+    registry.register_log_parser(fake_log_parser)
+    registry.register_deletion_analyzer(fake_deletion_analyzer)
+
+    real_default_stages = stages_module.default_stages
+
+    def fake_timeline(ctx: StageContext) -> StageResult:
+        calls["timeline"] += 1
+        return StageResult(
+            stage="timeline",
+            ok=True,
+            input_hash=ctx.input_hash,
+            output_hash=None,
+            message="timeline: fake",
+        )
+
+    def fake_motion(ctx: StageContext) -> StageResult:
+        calls["motion"] += 1
+        return StageResult(
+            stage="motion",
+            ok=True,
+            input_hash=ctx.input_hash,
+            output_hash=None,
+            message="motion: fake",
+        )
+
+    def fake_default_stages() -> dict[str, Any]:
+        base = dict(real_default_stages())
+        base["timeline"] = fake_timeline
+        base["motion"] = fake_motion
+        return base
+
+    monkeypatch.setattr(stages_module, "default_stages", fake_default_stages)
+
+    layout_id = content_id("layout", {"image_id": image["id"]})
+    guarded = appdb.case_db(real_settings.data_dir, case["id"])
+    with guarded.lock:
+        guarded.conn.execute(
+            "INSERT INTO inferred_layouts (id, image_id, header_len, magic, fields, codec,"
+            " confirmed_by) VALUES (?,?,?,?,?,?,?)",
+            (layout_id, image["id"], 8, None, "[]", "h264", None),
+        )
+        guarded.conn.commit()
+
+    confirm = real_client.post(f"/api/inferred-layouts/{layout_id}/confirm")
+    assert confirm.status_code == 200, confirm.text
+    assert confirm.json()["confirmed_by"] == "examiner"
+
+    assert calls == {"logs": 1, "deletion_verdict": 1, "timeline": 1, "motion": 1}, calls
+
+    deletions = real_client.get(f"/api/cases/{case['id']}/deletions").json()
+    assert len(deletions) == 1
+    assert deletions[0]["method"] == "format"
+
+    audit = real_client.get(f"/api/cases/{case['id']}/audit").json()
+    actions = [e["action"] for e in audit["items"]]
+    for stage_name in (
+        "pipeline.frame_index",
+        "pipeline.logs",
+        "pipeline.deletion_verdict",
+        "pipeline.clips",
+        "pipeline.timeline",
+        "pipeline.motion",
+    ):
+        assert actions.count(stage_name) == 1, (stage_name, actions)
+
+    # A second confirm of the *same* layout must stay the FIX-4 idempotent
+    # no-op path (no re-run of the reindex at all) — the downstream stages
+    # must not run a second time, and no duplicate deletion finding appears.
+    confirm2 = real_client.post(f"/api/inferred-layouts/{layout_id}/confirm")
+    assert confirm2.status_code == 200, confirm2.text
+    assert calls == {"logs": 1, "deletion_verdict": 1, "timeline": 1, "motion": 1}, calls
+    deletions_after_second = real_client.get(f"/api/cases/{case['id']}/deletions").json()
+    assert len(deletions_after_second) == 1

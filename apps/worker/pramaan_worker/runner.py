@@ -15,7 +15,7 @@ hash").
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -103,6 +103,38 @@ class JobRunner(Protocol):
 
 def _marker_path(ctx: StageContext, stage: str) -> Path:
     return ctx.case_dir / "jobs" / f"{ctx.image_id}.{stage}.done"
+
+
+def marker_path(ctx: StageContext, stage: str) -> Path:
+    """Public accessor for a stage's resumability marker file path (task
+    FIX-12). The path depends only on ``ctx.case_dir``/``ctx.image_id``/
+    ``stage`` — not on ``ctx.input_hash`` (that's compared against the
+    marker's own *contents*, written by :class:`InlineJobRunner`/
+    :class:`~pramaan_worker.dramatiq_runner.DramatiqJobRunner`) — so a
+    caller that bypasses ``JobRunner.run`` entirely (e.g. the
+    confirm-triggered reindex in ``pramaan_api.real.pipeline_store
+    ._reindex_confirmed_layout``) can still resolve and invalidate the
+    exact marker file an earlier ``JobRunner``-driven ``/scan`` wrote for
+    the same stage, regardless of what ``input_hash`` that scan used.
+    """
+    return _marker_path(ctx, stage)
+
+
+def invalidate_stage_markers(ctx: StageContext, stage_names: Iterable[str]) -> None:
+    """Delete the resumability marker file for each stage in
+    ``stage_names``, if present (task FIX-12). For a caller that
+    recomputes specific stages directly instead of going through
+    ``JobRunner.run`` — the confirm-triggered reindex, specifically — this
+    stops any *later* ``JobRunner``-driven run of the same evidence (e.g. a
+    ``/scan`` re-run on byte-identical evidence, same ``input_hash``) from
+    skipping those stages on the strength of a marker recorded *before*
+    the recompute (e.g. from the automatic ``/scan`` that ran while the
+    image's layout was still unconfirmed, when ``deletion_verdict`` had an
+    empty ``recordings`` table to work from). Safe to call on a stage that
+    has no marker yet.
+    """
+    for stage_name in stage_names:
+        marker_path(ctx, stage_name).unlink(missing_ok=True)
 
 
 def make_runner(backend: str, redis_url: str) -> JobRunner:

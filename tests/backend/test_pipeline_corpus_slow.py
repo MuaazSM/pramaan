@@ -14,6 +14,7 @@ corpus`` — task Q1/Q2).
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -23,11 +24,17 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.slow
 
 _CORPUS_IMAGES = Path(__file__).resolve().parents[2] / "corpus" / "images"
+_CORPUS_TRUTH = Path(__file__).resolve().parents[2] / "corpus" / "truth"
 
 
 def _corpus_image(name: str) -> Path | None:
     path = _CORPUS_IMAGES / name
     return path if path.is_file() else None
+
+
+def _corpus_truth(name: str) -> dict[str, object] | None:
+    path = _CORPUS_TRUTH / f"{name}.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
 def _family_registered(family: str) -> bool:
@@ -177,3 +184,82 @@ def test_xsim_layout_confirm_enables_recordings(
     audit = real_client.get(f"/api/cases/{case['id']}/audit").json()
     actions = [e["action"] for e in audit["items"]]
     assert "layout.confirmed" in actions
+
+
+def test_xsim_format_confirm_populates_deletions_matching_truth(
+    real_client: TestClient, real_evidence_dir: Path
+) -> None:
+    """Task FIX-12 (repro: docs/progress/FIX-11.md "Cross-workstream
+    issues" #1, confirmed at the CORE level by docs/progress/FIX-7.md's own
+    ``test_xsim_format_deletion_verdict``): confirming ``xsim_format.img``'s
+    inferred (Tier B) layout via the real API must populate
+    ``GET /cases/{cid}/deletions`` with one finding per channel,
+    ``method="format"`` — matching ``corpus/truth/xsim_format.json`` — not
+    stay empty forever the way it did before this task (the confirm-
+    triggered reindex used to stop at ``clips``, never re-running
+    ``deletion_verdict`` against the confirm-populated ``recordings``).
+    """
+    image_src = _corpus_image("xsim_format.img")
+    if image_src is None:
+        pytest.skip("corpus/images/xsim_format.img not present (run `just corpus` — task Q1/Q2)")
+    truth = _corpus_truth("xsim_format")
+    if truth is None:
+        pytest.skip("corpus/truth/xsim_format.json not present (run `just corpus` — task Q1/Q2)")
+    try:
+        from pramaan_recovery.deletion import (  # type: ignore[import-untyped] # noqa: F401
+            detect_deletions,
+        )
+        from pramaan_recovery.infer import infer_layout  # noqa: F401
+    except ImportError:
+        pytest.skip("pramaan_recovery not importable yet (task C3)")
+
+    dest = real_evidence_dir / "xsim_format.img"
+    shutil.copy(image_src, dest)
+
+    case = real_client.post(
+        "/api/cases", json={"case_number": "CR-CORPUS-XSIM-DEL", "title": "xsim_format.img"}
+    ).json()
+    ev = real_client.post(
+        f"/api/cases/{case['id']}/evidence",
+        json={"path": str(dest), "label": "xsim_format.img", "intake": _intake_body()},
+    ).json()
+
+    resp = real_client.post(f"/api/evidence/{ev['id']}/scan", json={})
+    assert resp.status_code == 202, resp.text
+    job = resp.json()
+    assert job["status"] == "done", job
+    assert all(s["status"] == "done" for s in job["stages"]), job["stages"]
+
+    # Before confirmation: XSIM is Tier B, no live index yet, so deletions
+    # (computed against an empty `recordings` table) must be empty — the
+    # documented pre-confirmation state, not this task's bug.
+    deletions_before = real_client.get(f"/api/cases/{case['id']}/deletions").json()
+    assert deletions_before == []
+
+    layout = real_client.get(f"/api/evidence/{ev['id']}/inferred-layout").json()
+    assert layout["confirmed_by"] is None
+    layout_id = layout["id"]
+
+    confirm_resp = real_client.post(f"/api/inferred-layouts/{layout_id}/confirm")
+    assert confirm_resp.status_code == 200, confirm_resp.text
+    assert confirm_resp.json()["confirmed_by"] == "examiner"
+
+    deletions = real_client.get(f"/api/cases/{case['id']}/deletions").json()
+    truth_deletions = truth["deletions"]
+    assert isinstance(truth_deletions, list)
+    truth_channels = {d["channel"] for d in truth_deletions}
+    assert len(deletions) == len(truth_deletions), deletions
+
+    by_channel = {d["channel"]: d for d in deletions}
+    assert set(by_channel) == truth_channels
+    for truth_del in truth_deletions:
+        finding = by_channel[truth_del["channel"]]
+        assert finding["method"] == "format" == truth_del["method"], finding
+        assert finding["actor"] == truth_del["actor"]  # truth: null on every channel
+
+    # Re-confirming is a no-op (task FIX-4): still exactly one finding per
+    # channel, never doubled.
+    confirm_again = real_client.post(f"/api/inferred-layouts/{layout_id}/confirm")
+    assert confirm_again.status_code == 200, confirm_again.text
+    deletions_after_second_confirm = real_client.get(f"/api/cases/{case['id']}/deletions").json()
+    assert len(deletions_after_second_confirm) == len(truth_deletions)

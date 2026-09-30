@@ -496,28 +496,74 @@ def confirm_inferred_layout(data_dir: str, actor: User, layout_id: str) -> Infer
     return updated
 
 
+#: Every stage downstream of parsing that depends on the ``recordings``/
+#: frame-index data ``parse_inferred_layout`` just (re)built, in the same
+#: order ``JobRunner.run`` would use for the automatic ``/scan`` pipeline
+#: (docs/02-BACKEND.md §6, stages 6-11) — including the AI-registered
+#: ``timeline``/``motion`` stages (task FIX-12). ``logs`` doesn't itself
+#: read ``recordings``/frames (it only reads the raw evidence bytes), but
+#: it sits between ``frame_index`` and ``deletion_verdict`` in pipeline
+#: order and ``deletion_verdict`` consumes its output
+#: (``log_events`` -> actor attribution), so it's re-run here too for a
+#: consistent, pipeline-order reindex rather than reaching for its
+#: (identical, since it isn't a function of recordings) pre-confirmation
+#: result.
+_CONFIRM_DOWNSTREAM_STAGES: tuple[str, ...] = (
+    "frame_index",
+    "logs",
+    "deletion_verdict",
+    "clips",
+    "timeline",
+    "motion",
+)
+
+
 def _reindex_confirmed_layout(
     data_dir: str, actor: User, case_id: str, layout: InferredLayout
 ) -> None:
-    """Runs the confirm-triggered equivalent of ``parse_index``/
-    ``frame_index``/``clips`` for ``layout.image_id`` (task FIX-1
+    """Runs the confirm-triggered equivalent of the automatic ``/scan``
+    pipeline's ``parse_index``-equivalent stage plus its downstream stages
+    6-11 (docs/02-BACKEND.md §6) for ``layout.image_id`` (task FIX-1
     "Decisions": a real reindex, not a placeholder — see
-    ``pramaan_worker.stages.parse_inferred_layout``). Best-effort: if the
-    image was somehow removed since the layout was recorded, or
-    ``pramaan_recovery.infer`` genuinely isn't importable, each stage
-    function's own degrade-gracefully path (``ok=True, skipped=True``)
-    still applies and is still audited — a confirm action itself must
-    never fail just because the reindex found nothing to do.
+    ``pramaan_worker.stages.parse_inferred_layout``; task FIX-12: extended
+    past ``frame_index``/``clips`` to *every* stage downstream of parsing
+    that depends on ``recordings``/frames, in pipeline order — see
+    ``_CONFIRM_DOWNSTREAM_STAGES``).
+
+    Before FIX-12, only ``frame_index`` and ``clips`` were re-run here;
+    ``deletion_verdict`` (and ``logs``, ``timeline``, ``motion``) kept
+    whatever they'd computed during the automatic ``/scan`` — an empty
+    ``recordings`` table for any Tier B image at that point, since
+    ``recordings`` is only populated once a layout is confirmed. That left
+    ``GET /cases/{cid}/deletions`` empty forever after confirming a Tier B
+    layout (docs/progress/FIX-11.md "Cross-workstream issues" #1 — the
+    precise repro this task fixes).
+
+    Each downstream stage's resumability marker is invalidated first
+    (:func:`pramaan_worker.runner.invalidate_stage_markers`) so a later
+    ``JobRunner``-driven run of this same evidence (e.g. a ``/scan``
+    re-run with unchanged bytes, same ``input_hash``) can't skip a stage
+    on the strength of a marker recorded before this reindex — only these
+    specific stages' caches are touched, nothing upstream (``hash_verify``,
+    ``fingerprint``, ``parse_index``, ``infer_layout``, ``carve``).
+
+    Best-effort: if the image was somehow removed since the layout was
+    recorded, or a stage's own dependency genuinely isn't importable, each
+    stage function's own degrade-gracefully path (``ok=True,
+    skipped=True``) still applies and is still audited — a confirm action
+    itself must never fail just because the reindex found nothing to do.
     """
     # Case-scoped (task FIX-4): this function already has `case_id`.
     image = real_store.get_evidence_in_case(data_dir, case_id, layout.image_id)
     if image is None:
         return
 
-    from pramaan_worker.runner import StageContext
+    from pramaan_worker.runner import StageContext, invalidate_stage_markers
     from pramaan_worker.stages import clips as clips_stage
+    from pramaan_worker.stages import default_stages, parse_inferred_layout
+    from pramaan_worker.stages import deletion_verdict as deletion_verdict_stage
     from pramaan_worker.stages import frame_index as frame_index_stage
-    from pramaan_worker.stages import parse_inferred_layout
+    from pramaan_worker.stages import logs as logs_stage
 
     ctx = StageContext(
         case_dir=case_dir(data_dir, case_id),
@@ -526,10 +572,27 @@ def _reindex_confirmed_layout(
         evidence_path=image.path,
         expected_sha256=image.sha256,
     )
+
+    invalidate_stage_markers(ctx, _CONFIRM_DOWNSTREAM_STAGES)
+
+    # `timeline`/`motion` are AI-owned (task A2/03-AI-TIMELINE.md); reached
+    # only through `pramaan_worker.stages.default_stages()` — the same
+    # `register_stage` hook the automatic `/scan` pipeline uses — never by
+    # importing an AI package directly here (this task's paths don't
+    # include AI routers/`packages/timeline`/`packages/analytics`). Falls
+    # back to the harmless placeholder stage if A2's routers haven't been
+    # imported yet (e.g. a unit test that builds the FastAPI app without
+    # mounting every router).
+    ai_stages = default_stages()
+
     results = [
         ("parse_inferred_layout", parse_inferred_layout(ctx, layout)),
         ("frame_index", frame_index_stage(ctx)),
+        ("logs", logs_stage(ctx)),
+        ("deletion_verdict", deletion_verdict_stage(ctx)),
         ("clips", clips_stage(ctx)),
+        ("timeline", ai_stages["timeline"](ctx)),
+        ("motion", ai_stages["motion"](ctx)),
     ]
     for stage_label, result in results:
         real_store.append_audit(
