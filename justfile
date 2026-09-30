@@ -177,8 +177,8 @@ corpus profile="small":
 validate:
     @echo "just validate: not yet implemented (Q3, Wave 4 builds tests/validation + docs/VALIDATION.md)."
 
-demo:
-    @echo "just demo: not yet implemented (wired once B1/B2 land the case pipeline, Wave 1-2)."
+demo *args:
+    uv run python tools/demo/demo.py {{args}}
 
 e2e:
     @echo "just e2e: not yet implemented (Q3, Wave 4 wires tests/e2e Playwright + API e2e)."
@@ -191,8 +191,26 @@ shots:
 # apps/worker) and infra/docker/ land.
 # ---------------------------------------------------------------------------
 
+# API (real mode) on :8000 + web dev server (real mode, VITE_MOCK unset)
+# on :5173, together. `apps/web/vite.config.ts` proxies `/api` (and
+# `/api/ws`) to `http://localhost:8000`, so the API must run on 8000 here.
+# Data dir defaults to `./data/dev` (gitignored); override PRAMAAN_DATA_DIR /
+# PRAMAAN_EVIDENCE_ROOTS / PRAMAAN_JOB_BACKEND in the environment before
+# calling `just dev` to point at something else. Ctrl-C stops both.
 dev:
-    @echo "just dev: not yet implemented (needs apps/api + apps/web dev servers, wired by B1/F1)."
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PRAMAAN_DATA_DIR="${PRAMAAN_DATA_DIR:-./data/dev}"
+    export PRAMAAN_STUB_MODE=0
+    export PRAMAAN_EVIDENCE_ROOTS="${PRAMAAN_EVIDENCE_ROOTS:-[\"$(pwd)/corpus/images\"]}"
+    export PRAMAAN_JOB_BACKEND="${PRAMAAN_JOB_BACKEND:-inline}"
+    mkdir -p "$PRAMAAN_DATA_DIR"
+    echo "== just dev: API   http://127.0.0.1:8000  (real mode, data dir: $PRAMAAN_DATA_DIR) =="
+    echo "== just dev: web   http://127.0.0.1:5173  (real mode, proxies /api -> :8000) =="
+    trap 'kill 0' EXIT INT TERM
+    uv run uvicorn pramaan_api.main:app --host 127.0.0.1 --port 8000 &
+    pnpm -C apps/web dev &
+    wait -n
 
 dev-mock:
     @echo "just dev-mock: not yet implemented (needs apps/web MSW mocks, wired by F1)."
