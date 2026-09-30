@@ -58,6 +58,7 @@ dev = [
     "httpx>=0.27,<1",
     "jsonschema>=4.21,<5",
     "maturin>=1.15.0",
+    "types-pyyaml>=6.0,<7",
 ]
 
 # Heavy ML/CV dependencies (torch, paddleocr, ultralytics, opencv-contrib, ...)

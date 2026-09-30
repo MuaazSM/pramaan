@@ -1,0 +1,73 @@
+# The DVR "genome" (docs/01-FORENSIC-CORE.md §4.4).
+#
+# Each entry describes one vendor family's on-disk signatures. Confidence for
+# a candidate image is the sum of matched signature weights (capped at 1.0).
+# `where: any` means "search the whole image"; `where: {start, end}` bounds
+# the search to an absolute byte range (inclusive start, exclusive end).
+#
+# `model_at`/`serial_at` are optional fixed-offset NUL-padded ASCII strings
+# read once a family is the top match, to fill VendorMatch.model/.serial.
+#
+# XSIM's only signature here is the one hint docs/01-FORENSIC-CORE.md §4.6
+# explicitly allows CORE to use ("sector 0 contains the ASCII string
+# XVR-GENERIC-2026"). Its true layout is deliberately not encoded here or
+# anywhere under packages/ (docs/01 §4.6's leak-test rule) — a low-confidence
+# hit here only tells the fingerprinter "try Tier B inference next".
+#
+# GENSIM has no discoverable signature at all: it is the tier-C fallback
+# entry (confidence always 0 from this file), reached only when nothing else
+# matches and inference (Tier B) also fails to find a magic.
+
+- family: hiksim
+  display_name: Hikvision-like (synthetic)
+  platform: hikvision
+  brands: [Hikvision, Prama]
+  tier: A
+  signatures:
+    - {bytes: "HIKVISION@HANGZHOU", where: {start: 0, end: 0x10000}, weight: 0.7}
+    - {bytes: "HIKBTREE", where: {start: 0, end: 0x4000000}, weight: 0.2}
+    - {bytes: "IMKH", where: any, weight: 0.1}
+  model_at: {offset: 0x300, len: 32}
+  serial_at: {offset: 0x320, len: 48}
+
+- family: dhsim
+  display_name: Dahua-like (synthetic)
+  platform: dahua
+  brands: [Dahua, CP Plus legacy]
+  tier: A
+  signatures:
+    - {bytes: "DHFS4.1\u0000", where: {start: 0, end: 0x10000}, weight: 0.7}
+    - {bytes: "DHAV", where: any, weight: 0.2}
+    - {bytes: "DHLG", where: any, weight: 0.1}
+  model_at: {offset: 0x40, len: 32}
+  serial_at: {offset: 0x80, len: 48}
+
+- family: hwsim
+  display_name: Honeywell-like (synthetic)
+  platform: honeywell
+  brands: [Honeywell]
+  tier: A
+  signatures:
+    - {bytes: "HONEYWELL-NVR-SIM", where: {start: 0, end: 0x400000}, weight: 0.7}
+    - {bytes: "HWSYS", where: {start: 0, end: 0x40000000}, weight: 0.2}
+  model_at: null
+  serial_at: null
+
+- family: xsim
+  display_name: Unknown vendor (undocumented synthetic)
+  platform: null
+  brands: []
+  tier: B
+  signatures:
+    - {bytes: "XVR-GENERIC-2026", where: {start: 0, end: 0x1000}, weight: 0.3}
+  model_at: null
+  serial_at: null
+
+- family: gensim
+  display_name: Unidentified (generic Annex B carve target)
+  platform: null
+  brands: []
+  tier: C
+  signatures: []
+  model_at: null
+  serial_at: null

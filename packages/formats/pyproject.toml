@@ -3,7 +3,10 @@ name = "pramaan-formats"
 version = "0.1.0"
 description = "Vendor format specs, fingerprints and generated parsers."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pramaan-core",
+    "pyyaml>=6.0,<7",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -11,6 +14,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pramaan_formats"]
+
+[tool.hatch.build]
+# fingerprints.yaml and the .ksy specs live next to the package (not inside
+# it, per docs/01-FORENSIC-CORE.md §2's path table) — include them in a
+# built wheel too; editable/workspace installs already see them directly.
+include = ["fingerprints.yaml", "specs/**/*.ksy"]
 
 [tool.ruff]
 line-length = 100

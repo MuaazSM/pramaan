@@ -3,7 +3,10 @@ name = "pramaan-recovery"
 version = "0.1.0"
 description = "Carver, format inference, deletion verdict."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pramaan-core",
+    "pramaan-formats",
+]
 
 [build-system]
 requires = ["hatchling"]
