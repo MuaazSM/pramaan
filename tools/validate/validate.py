@@ -536,30 +536,78 @@ def process_image(
         api_motion = []
         result.errors.append(f"motion query failed: {exc}")
     truth_motion = truth.get("motion_events", [])
-    if truth_motion:
-        tp = 0
-        matched_pred: set[int] = set()
-        for tm in truth_motion:
-            t_start = iso_to_us(tm["start_true"])
-            t_end = iso_to_us(tm["end_true"])
-            hit = False
-            for i, am in enumerate(api_motion):
-                if am["channel"] != tm["channel"]:
-                    continue
-                if am["start_norm_us"] <= t_end and t_start <= am["end_norm_us"]:
-                    hit = True
-                    matched_pred.add(i)
-            if hit:
-                tp += 1
-        fn = len(truth_motion) - tp
-        fp = len(api_motion) - len(matched_pred)
-        precision = tp / (tp + fp) if (tp + fp) else 0.0
-        recall = tp / (tp + fn) if (tp + fn) else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
-        result.metrics["motion_f1"] = Metric(
-            value=f1,
-            detail={"precision": precision, "recall": recall, "tp": tp, "fp": fp, "fn": fn},
+
+    def _motion_event_recoverable(tm: dict[str, Any]) -> bool:
+        # Same principle as deleted_frame_recovery: a truth event can only
+        # ever be found if at least one truth frame within its (channel,
+        # time) window still exists on disk (not overwritten). AI FIX-8
+        # found both HWSIM images place their motion event inside a
+        # recording the corpus's overwrite scenario leaves with zero
+        # surviving bytes — scoring that as a miss would blame the motion
+        # detector for evidence that was never recoverable in the first
+        # place.
+        t_start = iso_to_us(tm["start_true"])
+        t_end = iso_to_us(tm["end_true"])
+        return any(
+            r["channel"] == tm["channel"]
+            and not r["overwritten"]
+            and t_start <= r["ts_true_us"] <= t_end
+            for r in truth_frames
         )
+
+    if truth_motion:
+        recoverable_flags = [_motion_event_recoverable(tm) for tm in truth_motion]
+        scoreable_motion = [
+            tm for tm, ok in zip(truth_motion, recoverable_flags, strict=True) if ok
+        ]
+        excluded_motion = [
+            tm for tm, ok in zip(truth_motion, recoverable_flags, strict=True) if not ok
+        ]
+        if scoreable_motion:
+            tp = 0
+            matched_pred: set[int] = set()
+            for tm in scoreable_motion:
+                t_start = iso_to_us(tm["start_true"])
+                t_end = iso_to_us(tm["end_true"])
+                hit = False
+                for i, am in enumerate(api_motion):
+                    if am["channel"] != tm["channel"]:
+                        continue
+                    if am["start_norm_us"] <= t_end and t_start <= am["end_norm_us"]:
+                        hit = True
+                        matched_pred.add(i)
+                if hit:
+                    tp += 1
+            fn = len(scoreable_motion) - tp
+            fp = len(api_motion) - len(matched_pred)
+            precision = tp / (tp + fp) if (tp + fp) else 0.0
+            recall = tp / (tp + fn) if (tp + fn) else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+            result.metrics["motion_f1"] = Metric(
+                value=f1,
+                detail={
+                    "precision": precision,
+                    "recall": recall,
+                    "tp": tp,
+                    "fp": fp,
+                    "fn": fn,
+                    "scored_truth_events": len(scoreable_motion),
+                    "excluded_unrecoverable_events": len(excluded_motion),
+                    "excluded_reason": (
+                        "event falls entirely within a recording the corpus's overwrite "
+                        "scenario left with zero surviving (non-overwritten) frames — no "
+                        "recoverable evidence of it exists to score against"
+                        if excluded_motion
+                        else None
+                    ),
+                },
+            )
+        else:
+            result.metrics["motion_f1"] = na(
+                f"all {len(truth_motion)} motion event(s) in this image's ground truth fall "
+                "within a recording the corpus's overwrite scenario left with zero surviving "
+                "(non-overwritten) frames — none are recoverable, so there is nothing to score"
+            )
     else:
         result.metrics["motion_f1"] = na("no motion events in this image's ground truth")
 
