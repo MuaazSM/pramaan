@@ -229,8 +229,10 @@ e2e:
     fi
     exit $(( backend_ec > web_ec ? backend_ec : web_ec ))
 
+# Playwright screenshots of every screen (mock mode, both themes and sizes)
+# into docs/ui/screenshots/.
 shots:
-    @echo "just shots: not yet implemented (F1, Wave 1 wires 'pnpm -C apps/web shots')."
+    pnpm -C apps/web shots
 
 # ---------------------------------------------------------------------------
 # Dev loop and Docker Compose — stubs/skeleton until B1 (apps/api,
@@ -258,8 +260,9 @@ dev:
     pnpm -C apps/web dev &
     wait -n
 
+# Web app only, against MSW mocks (no API needed) on :5173.
 dev-mock:
-    @echo "just dev-mock: not yet implemented (needs apps/web MSW mocks, wired by F1)."
+    pnpm -C apps/web dev:mock
 
 up:
     #!/usr/bin/env bash
