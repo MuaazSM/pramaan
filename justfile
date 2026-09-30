@@ -161,9 +161,7 @@ _pytest path:
     fi
 
 # ---------------------------------------------------------------------------
-# Corpus, validation, demo, e2e, screenshots — stubs until their owning
-# tasks (Q1/Q2, Q3, F-tasks) land. Each prints a message and exits 0 so
-# `just check`/CI never depend on unimplemented work.
+# Corpus, validation, demo, e2e, screenshots.
 # ---------------------------------------------------------------------------
 
 # Builds the synthetic DVR disk corpus (docs/05-INFRA-QA.md §4) into
@@ -174,14 +172,62 @@ _pytest path:
 corpus profile="small":
     uv run python -m pramaan_synthdvr.cli build-all {{profile}}
 
-validate:
-    @echo "just validate: not yet implemented (Q3, Wave 4 builds tests/validation + docs/VALIDATION.md)."
+# Runs the full synthetic corpus through the real API (docs/05-INFRA-QA.md
+# §5, task Q3) and writes docs/VALIDATION.md + docs/validation.json. Always
+# exits 0 once it completes a run — every metric a corpus image can't
+# exercise, or whose producer hasn't landed, is recorded as "not available"
+# with a reason rather than crashing the harness (see docs/VALIDATION.md
+# "Cross-workstream issues" for anything that traces to a bug elsewhere).
+validate *args:
+    uv run python tools/validate/validate.py --timeout 1800 {{args}}
 
 demo *args:
     uv run python tools/demo/demo.py {{args}}
 
+# API e2e + tamper tests (tests/e2e, real API subprocess per test — docs
+# /05-INFRA-QA.md §6), then the WEB task's real-mode Playwright spec
+# (apps/web/playwright/real-*.spec.ts) against a `just demo`-seeded API, if
+# it has landed yet. Reports failures with a normal non-zero exit (these
+# are real assertions, not a "must never fail" report like `just validate`)
+# but never leaves a background API process running.
 e2e:
-    @echo "just e2e: not yet implemented (Q3, Wave 4 wires tests/e2e Playwright + API e2e)."
+    #!/usr/bin/env bash
+    set -uo pipefail
+    echo "== e2e: tests/e2e (API lifecycle + tamper tests, real API per test) =="
+    uv run pytest tests/e2e -m slow
+    backend_ec=$?
+
+    web_ec=0
+    real_specs=$(find apps/web/playwright -maxdepth 1 -name 'real-*.spec.ts' 2>/dev/null)
+    if [ -z "$real_specs" ]; then
+        echo "== e2e: no apps/web/playwright/real-*.spec.ts yet (pending WEB task F4) — skipping the Playwright real-mode spec =="
+    else
+        # Free :8000 first — a killed/orphaned uvicorn from a previous run
+        # (e.g. a shell that didn't run this trap) can otherwise still hold
+        # the port, and playwright.real.config.ts hardcodes :8000.
+        for pid in $(lsof -ti:8000 2>/dev/null); do kill -9 "$pid" 2>/dev/null || true; done
+        cleanup() { for pid in $(lsof -ti:8000 2>/dev/null); do kill -9 "$pid" 2>/dev/null || true; done; }
+        trap cleanup EXIT
+
+        echo "== e2e: seeding a real-mode API at :8000 for Playwright (tools/demo/demo.py --keep-running) =="
+        uv run python tools/demo/demo.py --keep-running --port 8000
+        demo_ec=$?
+        if [ "$demo_ec" -ne 0 ]; then
+            echo "== e2e: demo seeding failed (exit $demo_ec) — skipping the Playwright real-mode spec =="
+            web_ec=1
+        else
+            echo "== e2e: running Playwright real-mode spec =="
+            pnpm -C apps/web exec playwright test -c playwright.real.config.ts
+            web_ec=$?
+        fi
+    fi
+
+    if [ "$backend_ec" -ne 0 ]; then echo "== e2e: tests/e2e FAILED (exit $backend_ec) =="; fi
+    if [ "$web_ec" -ne 0 ]; then echo "== e2e: Playwright real-mode spec FAILED (exit $web_ec) =="; fi
+    if [ "$backend_ec" -eq 0 ] && [ "$web_ec" -eq 0 ]; then
+        echo "== e2e: done (backend passed; Playwright real-mode ran or is pending F4) =="
+    fi
+    exit $(( backend_ec > web_ec ? backend_ec : web_ec ))
 
 shots:
     @echo "just shots: not yet implemented (F1, Wave 1 wires 'pnpm -C apps/web shots')."
