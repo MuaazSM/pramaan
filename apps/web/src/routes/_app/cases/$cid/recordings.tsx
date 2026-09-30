@@ -1,22 +1,20 @@
-/** /cases/$cid/recordings — Recordings table. Designed placeholder for this wave. */
+/**
+ * /cases/$cid/recordings — Recordings. See src/features/recordings/recordings-screen.tsx for the
+ * screen brief and reference products studied.
+ */
 import { createFileRoute } from "@tanstack/react-router";
-import { Video } from "lucide-react";
-import { PlaceholderScreen } from "@/components/shell/placeholder-screen";
+import { ScreenShell } from "@/components/shell/screen-shell";
+import { RecordingsScreen } from "@/features/recordings/recordings-screen";
 
 export const Route = createFileRoute("/_app/cases/$cid/recordings")({
-  component: RecordingsPlaceholder,
+  component: RecordingsRoute,
 });
 
-function RecordingsPlaceholder() {
-    const { cid } = Route.useParams();
-    return (
-      <PlaceholderScreen
-        segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Recordings" }]}
-        caseId={cid}
-        icon={Video}
-        title="Recordings"
-        description="Virtualised table: channel, source (index / carved / inferred), deleted badge, device and normalised time, duration, size. Opens directly into the review workspace."
-        owner="WEB (Wave 2)"
-      />
-    );
+function RecordingsRoute() {
+  const { cid } = Route.useParams();
+  return (
+    <ScreenShell segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Recordings" }]} caseId={cid} showCustodySeal>
+      <RecordingsScreen cid={cid} />
+    </ScreenShell>
+  );
 }

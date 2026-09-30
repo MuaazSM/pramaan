@@ -1,22 +1,20 @@
-/** /cases/$cid/findings — Findings. Designed placeholder for this wave. */
+/**
+ * /cases/$cid/findings — Findings. See src/features/findings/findings-screen.tsx for the screen
+ * brief and reference products studied.
+ */
 import { createFileRoute } from "@tanstack/react-router";
-import { ShieldAlert } from "lucide-react";
-import { PlaceholderScreen } from "@/components/shell/placeholder-screen";
+import { ScreenShell } from "@/components/shell/screen-shell";
+import { FindingsScreen } from "@/features/findings/findings-screen";
 
 export const Route = createFileRoute("/_app/cases/$cid/findings")({
-  component: FindingsPlaceholder,
+  component: FindingsRoute,
 });
 
-function FindingsPlaceholder() {
-    const { cid } = Route.useParams();
-    return (
-      <PlaceholderScreen
-        segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Findings" }]}
-        caseId={cid}
-        icon={ShieldAlert}
-        title="Findings"
-        description="Deletion verdict cards: method, range, actor, confidence meter, and a reasons list that cites offsets and log ids — every finding links back to the timeline and Prove it."
-        owner="WEB (Wave 3)"
-      />
-    );
+function FindingsRoute() {
+  const { cid } = Route.useParams();
+  return (
+    <ScreenShell segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Findings" }]} caseId={cid} showCustodySeal>
+      <FindingsScreen cid={cid} />
+    </ScreenShell>
+  );
 }

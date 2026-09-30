@@ -2,6 +2,7 @@ import * as React from "react";
 import * as ToastPrimitive from "@radix-ui/react-toast";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "./use-toast";
 
 export const ToastProvider = ToastPrimitive.Provider;
 export const ToastViewport = React.forwardRef<
@@ -50,5 +51,35 @@ export function ToastClose({ className, ...props }: ToastPrimitive.ToastClosePro
     <ToastPrimitive.Close className={cn("focus-ring absolute right-2 top-2 text-text-3 hover:text-text", className)} {...props}>
       <X size={14} strokeWidth={1.5} />
     </ToastPrimitive.Close>
+  );
+}
+
+/**
+ * Renders the `useToast()` queue as actual `<Toast>` instances. Added by F2: `useToast()`/`toast()`
+ * existed (used by F1's intake wizard and now F2's scan/confirm-layout mutations) but nothing ever
+ * consumed the queue and rendered it — calling `toast()` was a silent no-op app-wide. Mounted once
+ * in `src/routes/__root.tsx` alongside `<ToastViewport>`. See docs/progress/F2.md "Decisions".
+ */
+export function Toaster() {
+  const { toasts, dismiss } = useToast();
+  return (
+    <>
+      {toasts.map((t) => (
+        <Toast
+          key={t.id}
+          variant={t.variant}
+          open
+          onOpenChange={(open) => {
+            if (!open) dismiss(t.id);
+          }}
+        >
+          <div className="flex-1">
+            <ToastTitle>{t.title}</ToastTitle>
+            {t.description && <ToastDescription>{t.description}</ToastDescription>}
+          </div>
+          <ToastClose />
+        </Toast>
+      ))}
+    </>
   );
 }

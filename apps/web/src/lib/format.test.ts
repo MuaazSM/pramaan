@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { shortHash, formatTimecode, parseTimecodeInput, formatBytes, formatDuration } from "./format";
+import {
+  shortHash,
+  formatTimecode,
+  formatTimecodeUs,
+  formatOffsetLabel,
+  parseTimecodeInput,
+  formatBytes,
+  formatDuration,
+} from "./format";
 
 describe("shortHash", () => {
   it("shortens a long hash to first8…last4", () => {
@@ -49,6 +57,24 @@ describe("formatBytes", () => {
 
   it("formats gigabytes", () => {
     expect(formatBytes(2_147_483_648)).toBe("2.0 GB");
+  });
+});
+
+describe("formatTimecodeUs", () => {
+  it("renders an epoch-microsecond value the same way formatTimecode renders its ISO equivalent", () => {
+    const iso = "2026-03-12T08:32:37.480Z";
+    const us = Date.parse(iso) * 1000;
+    expect(formatTimecodeUs(us)).toBe(formatTimecode(iso));
+  });
+});
+
+describe("formatOffsetLabel", () => {
+  it("formats a positive offset with a leading +", () => {
+    expect(formatOffsetLabel(312_000_000)).toBe("+00:05:12");
+  });
+
+  it("formats a negative offset with a leading -", () => {
+    expect(formatOffsetLabel(-3_600_000_000)).toBe("-01:00:00");
   });
 });
 

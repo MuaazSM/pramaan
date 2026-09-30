@@ -18,7 +18,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://localhost:8000",
+      // `ws: true` additionally upgrades `/api/ws` (docs/02-BACKEND.md §7) — Vite's http-proxy
+      // does not proxy WebSocket upgrades on a bare string target. Added by F2 (evidence detail's
+      // pipeline panel binds to this socket in real mode too); see docs/progress/F2.md "Decisions".
+      "/api": { target: "http://localhost:8000", ws: true },
     },
   },
   build: {

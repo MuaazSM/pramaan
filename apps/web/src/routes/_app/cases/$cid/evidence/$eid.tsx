@@ -1,27 +1,29 @@
-/** /cases/$cid/evidence/$eid — Evidence detail. Designed placeholder for this wave. */
+/**
+ * /cases/$cid/evidence/$eid — Evidence detail. See src/features/evidence/evidence-detail-screen.tsx
+ * for the screen brief and reference products studied.
+ */
 import { createFileRoute } from "@tanstack/react-router";
-import { ScanSearch } from "lucide-react";
-import { PlaceholderScreen } from "@/components/shell/placeholder-screen";
+import { ScreenShell } from "@/components/shell/screen-shell";
+import { EvidenceDetailScreen } from "@/features/evidence/evidence-detail-screen";
 
 export const Route = createFileRoute("/_app/cases/$cid/evidence/$eid")({
-  component: EvidenceDetailPlaceholder,
+  component: EvidenceDetailRoute,
 });
 
-function EvidenceDetailPlaceholder() {
-    const { cid, eid } = Route.useParams();
-    return (
-      <PlaceholderScreen
-        segments={[
-          { label: "Cases", to: "/cases" },
-          { label: cid, to: `/cases/${cid}` },
-          { label: "Evidence", to: `/cases/${cid}/evidence` },
-          { label: eid },
-        ]}
-        caseId={cid}
-        icon={ScanSearch}
-        title="Evidence detail"
-        description="Identification (ranked vendor matches with reasons), scan pipeline progress, the Tier B inferred-layout panel and device log events for this image."
-        owner="WEB (Wave 2)"
-      />
-    );
+function EvidenceDetailRoute() {
+  const { cid, eid } = Route.useParams();
+  return (
+    <ScreenShell
+      segments={[
+        { label: "Cases", to: "/cases" },
+        { label: cid, to: `/cases/${cid}` },
+        { label: "Evidence", to: `/cases/${cid}/evidence` },
+        { label: eid },
+      ]}
+      caseId={cid}
+      showCustodySeal
+    >
+      <EvidenceDetailScreen cid={cid} eid={eid} />
+    </ScreenShell>
+  );
 }

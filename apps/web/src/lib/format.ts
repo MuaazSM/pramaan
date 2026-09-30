@@ -56,3 +56,24 @@ export function formatDuration(seconds: number): string {
   if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
   return `${m}m ${String(s).padStart(2, "0")}s`;
 }
+
+/**
+ * Format an epoch-microsecond timestamp (the wire unit for `*_ts_us` fields on Recording,
+ * DeletionFinding, LogEvent, ClockSegment) the same way `formatTimecode` renders an ISO string.
+ * Added for F2 (recordings/findings/evidence-detail — see docs/progress/F2.md); additive only,
+ * `formatTimecode` itself is unchanged.
+ */
+export function formatTimecodeUs(us: number): string {
+  return formatTimecode(new Date(us / 1000).toISOString());
+}
+
+/** Signed device-clock offset label, e.g. `+00:05:12` or `-01:00:00`, for clock-drift badges. */
+export function formatOffsetLabel(offsetUs: number): string {
+  const sign = offsetUs < 0 ? "-" : "+";
+  const abs = Math.abs(Math.round(offsetUs / 1_000_000));
+  const h = Math.floor(abs / 3600);
+  const m = Math.floor((abs % 3600) / 60);
+  const s = abs % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${sign}${pad(h)}:${pad(m)}:${pad(s)}`;
+}
