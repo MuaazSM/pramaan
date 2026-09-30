@@ -20,7 +20,7 @@ import hashlib
 from pramaan_core import scan
 from pramaan_core.evidence import EvidenceReader
 from pramaan_core.models import ByteRange, FrameRef
-from pramaan_formats import dhav, mpegps, nalutil
+from pramaan_formats import dhav, hwsim, mpegps, nalutil
 
 
 def _consumed(consumed: list[tuple[int, int]], offset: int) -> bool:
@@ -68,6 +68,69 @@ def carve_dhav(reader: EvidenceReader, image_id: str, ranges: list[ByteRange]) -
                         height=None,
                         source="carved",
                         recording_id=None,
+                        deleted=True,
+                    )
+                )
+    frames.sort(key=lambda f: f.payload_offset)
+    return frames
+
+
+def carve_hwsim(reader: EvidenceReader, image_id: str, ranges: list[ByteRange]) -> list[FrameRef]:
+    """Recover HWSIM 20-byte-headered NALs from ``ranges`` with no live
+    channel-list entry at all (docs/01-FORENSIC-CORE.md §4.6 "HWSIM", §4.7
+    step 7). Candidate offsets come from the fixed 3-byte marker every NAL
+    header carries at bytes ``[1:4]`` (``hwsim.HW_HDR_FIXED``); structural
+    validation (type byte, NAL length bounds, the start code right after
+    the header) rejects coincidental matches almost for free, the same way
+    ``carve_dhav``/``carve_hiksim_ps`` do for their own signatures.
+
+    HWSIM's per-NAL header has no channel field (docs/01-FORENSIC-CORE.md
+    §4.6) — unlike DHAV/HIKSIM-PS, a carved run alone can't say which
+    channel it belongs to, and (this corpus's) HWSIM channels all share one
+    resolution, so SPS-based clustering (``pramaan_recovery.carve``'s
+    fallback) can't separate them either. The one channel-shaped hint left
+    is the disk's own *layout* convention: every recording round writes one
+    contiguous, sentinel-terminated run per live channel, in the same
+    channel order every round (docs/progress/Q2.md's writer always iterates
+    channels in ascending order). So each ``ByteRange`` is treated as one
+    "round": runs found inside it are numbered by the order they're carved
+    in and assigned channels by cycling through the *current* live channel
+    roster (``hwsim.live_channel_roster``) in that same order. This is a
+    documented, corpus-specific heuristic, not a general HWSIM guarantee —
+    if the image has no readable channel list at all, channel is left
+    ``None`` rather than guessed."""
+    roster = hwsim.live_channel_roster(reader)
+    frames: list[FrameRef] = []
+    for rng in ranges:
+        start, end = rng.offset, rng.offset + rng.length
+        if end <= start:
+            continue
+        data = reader.read(start, end - start)
+        hits = scan.scan_signatures(reader.path, [hwsim.HW_HDR_FIXED], start, end)
+        candidate_offsets = sorted({offset - 1 for _, offset in hits if offset - 1 >= start})
+        consumed: list[tuple[int, int]] = []
+        run_index = 0
+        for offset in candidate_offsets:
+            if _consumed(consumed, offset):
+                continue
+            local = offset - start
+            nals = hwsim.walk_hw_nals(data[local:], offset, end - offset)
+            aus = hwsim.group_hw_access_units(nals)
+            if not aus:
+                continue
+            last_nal = nals[-1]
+            consumed.append((offset, last_nal.payload_offset + last_nal.nal_len))
+            channel = roster[run_index % len(roster)] if roster else None
+            run_index += 1
+            for au in aus:
+                frames.append(
+                    hwsim.hw_au_to_frame_ref(
+                        au,
+                        image_id=image_id,
+                        channel=channel,
+                        stream="main",
+                        recording_id=None,
+                        source="carved",
                         deleted=True,
                     )
                 )

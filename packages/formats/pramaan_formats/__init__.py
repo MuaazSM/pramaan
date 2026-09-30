@@ -16,3 +16,4 @@ __version__ = "0.1.0"
 # the whole point of these imports.
 from pramaan_formats import dhsim as _dhsim  # noqa: F401,E402
 from pramaan_formats import hiksim as _hiksim  # noqa: F401,E402
+from pramaan_formats import hwsim as _hwsim  # noqa: F401,E402
