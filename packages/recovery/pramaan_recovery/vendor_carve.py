@@ -125,19 +125,17 @@ def carve_hwsim(reader: EvidenceReader, image_id: str, ranges: list[ByteRange]) 
             channel = roster[run_index % len(roster)] if roster else None
             run_index += 1
             for au in aus:
-                slice_nal = au[-1]
-                nal_local = slice_nal.payload_offset - start
-                nal_payload = data[nal_local : nal_local + slice_nal.nal_len]
-                frames.append(
-                    hwsim.hw_au_to_frame_ref(
+                frames.extend(
+                    hwsim.hw_au_to_frame_refs(
                         au,
+                        data,
+                        start,
                         image_id=image_id,
                         channel=channel,
                         stream="main",
                         recording_id=None,
                         source="carved",
                         deleted=True,
-                        payload_sha256=hashlib.sha256(nal_payload).hexdigest(),
                     )
                 )
     frames.sort(key=lambda f: f.payload_offset)

@@ -113,6 +113,75 @@ def test_clip_from_carved_deleted_hiksim_footage_plays(tmp_path: Path) -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(FFPROBE is None, reason="ffprobe not on PATH")
+def test_clip_from_live_hwsim_recording_plays_with_no_reencode(tmp_path: Path) -> None:
+    """FIX-5: HWSIM headers every NAL (including SPS/PPS/SEI) individually
+    on disk (docs/01-FORENSIC-CORE.md §4.6); before FIX-5,
+    ``HwsimParser.iter_frames`` recorded only the trailing slice NAL as a
+    frame's payload, discarding the leading parameter sets, so ffmpeg's
+    remux always failed with "non-existing PPS 0 referenced"
+    (docs/progress/FIX-2.md "Cross-workstream issues" #1)."""
+    _skip_if_missing("hwsim_format")
+    with EvidenceReader.open(str(IMAGES_DIR / "hwsim_format.img")) as r:
+        parser = registry.get("hwsim")
+        rec = parser.list_recordings(r)[0]
+        frames = list(parser.iter_frames(r, rec))
+        assert any(f.frame_type == "SPS" for f in frames)  # sanity
+        results = build_clips(r, rec.image_id, rec.channel, frames, tmp_path)
+
+    assert len(results) == 1
+    clip = results[0]
+    assert clip.path.exists()
+
+    probed = _ffprobe_json(clip.path)
+    streams = probed["streams"]
+    assert isinstance(streams, list) and len(streams) == 1
+    stream = streams[0]
+    assert stream["codec_name"] == "h264"
+    assert stream["codec_type"] == "video"
+    assert stream["width"] == 640
+    assert stream["height"] == 360
+    slice_count = sum(1 for f in frames if f.frame_type in ("I", "P"))
+    assert int(stream["nb_frames"]) == slice_count
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(FFPROBE is None, reason="ffprobe not on PATH")
+def test_clip_from_carved_deleted_hwsim_footage_plays(tmp_path: Path) -> None:
+    """The HWSIM equivalent of the HIKSIM carved-footage test above: deleted
+    footage recovered by ``vendor_carve.carve_hwsim`` must also remux to a
+    playable MP4, prepending a cached SPS/PPS (FIX-5's
+    ``clip._coalesce_leading_param_sets``) when a carved run's leading
+    access unit doesn't itself carry one."""
+    _skip_if_missing("hwsim_format")
+    with EvidenceReader.open(str(IMAGES_DIR / "hwsim_format.img")) as r:
+        parser = registry.get("hwsim")
+        image_id = parser._image_id(r)  # noqa: SLF001
+        ranges = parser.unindexed_ranges(r)
+        carved = vendor_carve.carve_hwsim(r, image_id, ranges)
+        by_channel: dict[int, list] = {}
+        for f in carved:
+            if f.channel is not None:
+                by_channel.setdefault(f.channel, []).append(f)
+        assert by_channel  # sanity
+
+        cache: dict[int, bytes] = {}
+        any_clip_checked = False
+        for channel, frames in by_channel.items():
+            out_dir = tmp_path / f"ch{channel}"
+            results = build_clips(r, image_id, channel, frames, out_dir, sps_pps_cache=cache)
+            for clip in results:
+                probed = _ffprobe_json(clip.path)
+                streams = probed["streams"]
+                assert isinstance(streams, list) and len(streams) == 1
+                assert streams[0]["codec_name"] == "h264"
+                assert streams[0]["width"] == 640
+                assert streams[0]["height"] == 360
+                any_clip_checked = True
+        assert any_clip_checked
+
+
+@pytest.mark.slow
 def test_clip_determinism_byte_identical_across_two_runs(tmp_path: Path) -> None:
     _skip_if_missing("hiksim_clean")
     with EvidenceReader.open(str(IMAGES_DIR / "hiksim_clean.img")) as r:

@@ -78,7 +78,16 @@ def test_list_recordings_matches_truth_live_entries(image: str) -> None:
 @pytest.mark.parametrize("image", ["hwsim_format", "hwsim_overwrite"])
 def test_iter_frames_matches_truth_by_offset(image: str) -> None:
     """Compares by ``payload_offset`` (robust to the id-collision bug — see
-    module docstring), not by filtering truth on ``deleted``."""
+    module docstring), not by filtering truth on ``deleted``.
+
+    Ground truth records one ``TruthFrame`` per *access unit*, pointing at
+    that access unit's own slice NAL (docs/05-INFRA-QA.md's writer, mirrored
+    in docs/progress/C3.md's own module docstring above) — it has no rows
+    for a leading SPS/PPS/SEI NAL. FIX-5 made ``iter_frames`` yield one
+    ``FrameRef`` per *physical* NAL (not just the trailing slice), so the
+    truth-offset comparison below is scoped to the slice (``I``/``P``)
+    frames only; the separate assertion further down checks the new
+    parameter-set frames directly instead."""
     _skip_if_missing(image)
     truth_frames = pq.read_table(TRUTH_DIR / f"{image}.frames.parquet").to_pylist()
     truth_by_offset = {f["payload_offset"]: f for f in truth_frames}
@@ -89,7 +98,9 @@ def test_iter_frames_matches_truth_by_offset(image: str) -> None:
         parsed = [f for rec in recs for f in parser.iter_frames(r, rec)]
 
     assert parsed  # sanity
-    for f in parsed:
+    slice_frames = [f for f in parsed if f.frame_type in ("I", "P")]
+    assert slice_frames  # sanity: didn't accidentally filter everything out
+    for f in slice_frames:
         t = truth_by_offset[f.payload_offset]
         assert f.payload_len == t["payload_len"]
         assert f.channel == t["channel"]
@@ -98,6 +109,44 @@ def test_iter_frames_matches_truth_by_offset(image: str) -> None:
         assert f.codec == "h264"
         assert f.source == "index"
         assert not f.deleted
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("image", ["hwsim_format", "hwsim_overwrite"])
+def test_iter_frames_recovers_leading_parameter_sets(image: str) -> None:
+    """FIX-5: every leading keyframe of a live recording must yield its own
+    SPS/PPS FrameRefs (not just the slice NAL) so
+    ``pramaan_recovery.clip.build_clips`` can assemble a valid Annex-B
+    stream / seed its per-channel SPS/PPS cache."""
+    _skip_if_missing(image)
+    with EvidenceReader.open(str(IMAGES_DIR / f"{image}.img")) as r:
+        parser = registry.get("hwsim")
+        recs = parser.list_recordings(r)
+        assert recs  # sanity
+        for rec in recs:
+            parsed = list(parser.iter_frames(r, rec))
+            sps = [f for f in parsed if f.frame_type == "SPS"]
+            pps = [f for f in parsed if f.frame_type == "PPS"]
+            assert sps and pps, f"no SPS/PPS recovered for recording {rec.id}"
+            for f in sps + pps:
+                assert f.channel == rec.channel
+                assert f.source == "index"
+                assert not f.deleted
+                assert f.payload_sha256 is not None
+            # The recording's very first access unit leads with SPS then
+            # PPS, immediately followed by its first slice (I/P) NAL — the
+            # exact shape `pramaan_recovery.clip.build_clips` needs to
+            # remux a playable clip without any cached SPS/PPS at all.
+            assert parsed[0].frame_type == "SPS"
+            assert parsed[1].frame_type == "PPS"
+            first_slice_index = next(
+                i for i, f in enumerate(parsed) if f.frame_type in ("I", "P")
+            )
+            assert parsed[first_slice_index].frame_type == "I"
+            assert all(
+                f.payload_offset < parsed[first_slice_index].payload_offset
+                for f in parsed[:first_slice_index]
+            )
 
 
 @pytest.mark.slow

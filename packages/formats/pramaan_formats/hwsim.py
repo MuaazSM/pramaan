@@ -62,11 +62,20 @@ HW_TYPE_IDR_OR_PARAM = 0x82
 HW_TYPE_NON_IDR = 0x02
 HW_HDR_FIXED = b"\x80\x01\x00"  # header bytes [1:4], both NAL types
 START_CODE = b"\x00\x00\x00\x01"
+NAL_SEI = 6
 NAL_SPS = 7
 NAL_PPS = 8
 NAL_IDR = 5
 NAL_NON_IDR = 1
 VCL_TYPES = (NAL_IDR, NAL_NON_IDR)
+
+_NAL_TYPE_FRAME_TYPE: dict[int, str] = {
+    NAL_SPS: "SPS",
+    NAL_PPS: "PPS",
+    NAL_SEI: "SEI",
+    NAL_IDR: "I",
+    NAL_NON_IDR: "P",
+}
 
 
 class HwsimFormatError(ValueError):
@@ -270,8 +279,8 @@ def group_hw_access_units(nals: list[_HwNal]) -> list[list[_HwNal]]:
     return aus
 
 
-def hw_au_to_frame_ref(
-    au: list[_HwNal],
+def _hw_nal_frame_ref(
+    nal: _HwNal,
     *,
     image_id: str,
     channel: int | None,
@@ -281,35 +290,89 @@ def hw_au_to_frame_ref(
     deleted: bool,
     payload_sha256: str,
 ) -> FrameRef:
-    """``payload_sha256`` is the full sha256 hex of the slice NAL's own
-    payload bytes (``data[payload_offset:payload_offset+nal_len]``) —
-    computed by the caller, which already holds those bytes (``data`` in
-    ``iter_frames``/``vendor_carve.carve_hwsim``); this function never reads
-    the image itself. ``frame_id`` is then derived from
-    ``(image_id, header_offset, payload_sha256)`` (FIX-3:
-    ``pramaan_core.ids.frame_id``) so two access units sharing identical
-    payload bytes at different physical offsets never collide."""
-    slice_nal = au[-1]  # group_hw_access_units always ends a group on a VCL NAL
-    is_idr = any(n.nal_type == NAL_IDR for n in au)
+    """One :class:`FrameRef` for a single physical NAL (``nal``), typed by
+    its own NAL type (``SPS``/``PPS``/``SEI``/``I``/``P``). ``payload_sha256``
+    is the full sha256 hex of that NAL's own bytes (start code included,
+    header excluded) — computed by the caller, which already holds them.
+    ``frame_id`` is derived from ``(image_id, header_offset, payload_sha256)``
+    (FIX-3: ``pramaan_core.ids.frame_id``) so two NALs sharing identical
+    bytes at different physical offsets never collide."""
     return FrameRef(
-        frame_id=make_frame_id(image_id, slice_nal.header_offset, payload_sha256),
+        frame_id=make_frame_id(image_id, nal.header_offset, payload_sha256),
         image_id=image_id,
         channel=channel,
         stream=stream,
         codec="h264",
-        frame_type="I" if is_idr else "P",
-        header_offset=slice_nal.header_offset,
-        payload_offset=slice_nal.payload_offset,
-        payload_len=slice_nal.nal_len,
-        ts_header_us=slice_nal.ts_us,
+        frame_type=_NAL_TYPE_FRAME_TYPE.get(nal.nal_type, "other"),  # type: ignore[arg-type]
+        header_offset=nal.header_offset,
+        payload_offset=nal.payload_offset,
+        payload_len=nal.nal_len,
+        ts_header_us=nal.ts_us,
         ts_index_us=None,
-        width=slice_nal.width,
-        height=slice_nal.height,
+        width=nal.width,
+        height=nal.height,
         source=source,  # type: ignore[arg-type]
         recording_id=recording_id,
         deleted=deleted,
         payload_sha256=payload_sha256,
     )
+
+
+def hw_au_to_frame_refs(
+    au: list[_HwNal],
+    data: bytes,
+    data_base_offset: int,
+    *,
+    image_id: str,
+    channel: int | None,
+    stream: str,
+    recording_id: str | None,
+    source: str,
+    deleted: bool,
+) -> list[FrameRef]:
+    """One :class:`FrameRef` **per physical NAL** in access unit ``au``, in
+    on-disk order (leading ``SPS``/``PPS``/``SEI`` NALs first, the ``I``/``P``
+    slice NAL last) — not just the trailing slice NAL.
+
+    docs/01-FORENSIC-CORE.md §4.6 HWSIM: "per NAL, a 20-byte custom header
+    ... Then the NAL with its 4-byte start code" — every NAL, parameter sets
+    included, is individually headered and independently readable on disk;
+    the old behaviour (recording only ``au[-1]``, the slice NAL) silently
+    discarded a live/carved keyframe's leading SPS/PPS/SEI bytes, which is
+    exactly why `pramaan_recovery.clip.build_clips` could never remux a
+    playable HWSIM clip (FIX-2/FIX-5: no HWSIM frame ever "led with" an
+    in-payload SPS/PPS for its ``sps_pps_cache`` to seed itself from).
+    Emitting one FrameRef per NAL — each with its own valid Annex-B
+    bytes (start code + NAL, header excluded) as its payload span — lets
+    the clip builder reconstruct a valid elementary stream by simply
+    concatenating a run's frame payloads in order, and lets its SPS/PPS
+    cache see and cache the parameter sets (`clip._coalesce_leading_param_sets`
+    folds these per-NAL frames back into one per-access-unit blob, the same
+    shape HIKSIM/DHSIM's own bundled-payload convention already produces).
+
+    ``data``/``data_base_offset``: the buffer the caller already read (e.g.
+    ``iter_frames``'s ``data`` at ``byte_range.offset``, or
+    ``vendor_carve.carve_hwsim``'s ``data`` at ``rng.offset``) and its
+    absolute base offset, used to slice out and hash each NAL's own bytes;
+    this function never reads the image itself."""
+    out: list[FrameRef] = []
+    for nal in au:
+        local = nal.payload_offset - data_base_offset
+        nal_bytes = data[local : local + nal.nal_len]
+        payload_sha256 = hashlib.sha256(nal_bytes).hexdigest()
+        out.append(
+            _hw_nal_frame_ref(
+                nal,
+                image_id=image_id,
+                channel=channel,
+                stream=stream,
+                recording_id=recording_id,
+                source=source,
+                deleted=deleted,
+                payload_sha256=payload_sha256,
+            )
+        )
+    return out
 
 
 def live_channel_roster(r: EvidenceReader) -> list[int]:
@@ -414,18 +477,16 @@ class HwsimParser:
         data = r.read(byte_range.offset, byte_range.length)
         nals = walk_hw_nals(data, byte_range.offset, byte_range.length)
         for au in group_hw_access_units(nals):
-            slice_nal = au[-1]
-            local = slice_nal.payload_offset - byte_range.offset
-            payload = data[local : local + slice_nal.nal_len]
-            yield hw_au_to_frame_ref(
+            yield from hw_au_to_frame_refs(
                 au,
+                data,
+                byte_range.offset,
                 image_id=rec.image_id,
                 channel=rec.channel,
                 stream=rec.stream,
                 recording_id=rec.id,
                 source="index",
                 deleted=False,
-                payload_sha256=hashlib.sha256(payload).hexdigest(),
             )
 
     def unindexed_ranges(self, r: EvidenceReader) -> list[ByteRange]:

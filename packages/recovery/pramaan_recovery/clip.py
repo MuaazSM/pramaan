@@ -101,6 +101,51 @@ def _leading_sps_pps(payload: bytes) -> bytes | None:
     return bytes(out) if found else None
 
 
+_PARAM_SET_FRAME_TYPES = ("SPS", "PPS", "SEI", "VPS")
+
+
+def _coalesce_leading_param_sets(
+    run: list[FrameRef], payloads: list[bytes]
+) -> list[bytes]:
+    """Bundle each maximal run of leading parameter-set frames
+    (``frame_type`` ``SPS``/``PPS``/``SEI``/``VPS``) together with the
+    *next* frame's payload into one concatenated Annex-B blob — the same
+    per-access-unit payload shape HIKSIM/DHSIM already produce for a
+    keyframe (their frame payload convention bundles a keyframe's own
+    SPS/PPS into one payload span, docs/progress/C2.md).
+
+    HWSIM headers every NAL individually on disk and (FIX-5) emits one
+    :class:`FrameRef` per NAL rather than per access unit, so a run's
+    leading SPS/PPS/SEI NALs arrive here as their own, separate frames
+    instead of embedded in the following keyframe's payload. Coalescing
+    them first means the rest of this module (`_leading_sps_pps`'s
+    single-payload scan and the ``sps_pps_cache`` update below) only ever
+    has to reason about one shape, regardless of which convention produced
+    the frames. For HIKSIM/DHSIM (which never emit ``SPS``/``PPS``/``SEI``
+    frame types — their own parameter sets, when present, are already
+    embedded inside an ``I`` frame's own payload bytes) this is a no-op:
+    each input payload maps to exactly one, unchanged output entry, so a
+    non-video "other"-typed frame (e.g. DHSIM's audio records) is never
+    merged with anything either."""
+    out: list[bytes] = []
+    pending = bytearray()
+    for frame, payload in zip(run, payloads, strict=True):
+        if frame.frame_type in _PARAM_SET_FRAME_TYPES:
+            pending += payload
+            continue
+        if pending:
+            payload = bytes(pending) + payload
+            pending = bytearray()
+        out.append(payload)
+    if pending:
+        # An orphan trailing parameter-set frame with no following frame to
+        # attach to (shouldn't occur — every access-unit grouper in this
+        # codebase always ends a group on a VCL NAL) — keep it rather than
+        # silently drop bytes.
+        out.append(bytes(pending))
+    return out
+
+
 def _estimate_fps(run: list[FrameRef]) -> float:
     with_ts = [f for f in run if f.ts_header_us is not None]
     if len(with_ts) >= 2:
@@ -174,13 +219,14 @@ def build_clips(
     results: list[ClipResult] = []
     for run in group_runs(frames, max_gap_us=max_gap_us):
         payloads = [reader.read(f.payload_offset, f.payload_len) for f in run]
+        coalesced = _coalesce_leading_param_sets(run, payloads)
 
         stream_parts: list[bytes] = []
-        if _leading_sps_pps(payloads[0]) is None:
+        if _leading_sps_pps(coalesced[0]) is None:
             cached = sps_pps_cache.get(channel)
             if cached is not None:
                 stream_parts.append(cached)
-        for payload in payloads:
+        for payload in coalesced:
             stream_parts.append(payload)
             sps_pps = _leading_sps_pps(payload)
             if sps_pps is not None:
