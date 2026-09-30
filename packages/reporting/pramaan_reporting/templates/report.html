@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pramaan forensic report — {{ manifest.case.case_number }}</title>
+<style>{{ css }}</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="case-id-marker">{{ manifest.case.case_number }}</div>
+  <div class="report-hash-marker">{{ envelope.report_sha256 | shorthash }}</div>
+  <div class="wordmark">pramaan<span class="dot">.</span></div>
+  <div class="tagline">Forensic examination report — {{ manifest.case.case_number }}</div>
+
+  <table style="margin-top:24px;">
+    <tr><th>Case</th><td>{{ manifest.case.title }} ({{ manifest.case.case_number }})</td></tr>
+    <tr><th>FIR / reference no.</th><td>{{ manifest.case.fir_reference or "—" }}</td></tr>
+    <tr><th>Lab</th><td>{{ manifest.case.lab or "—" }}</td></tr>
+    <tr><th>Examiner</th><td>{{ manifest.examiner.username }} ({{ manifest.examiner.role }})</td></tr>
+    <tr><th>Report generated</th><td class="mono">{{ envelope.generated_utc }}</td></tr>
+  </table>
+
+  <div class="integrity-box">
+    <div class="row"><span>Report hash (SHA-256, canonical manifest)</span><span class="mono">{{ envelope.report_sha256 }}</span></div>
+    <div class="row"><span>Custody chain head hash</span><span class="mono">{{ manifest.custody.head_hash | shorthash }}</span> <span class="chip chip-ok">custody length {{ manifest.custody.length }}</span></div>
+    <div class="row"><span>Evidence items</span><span>{{ manifest.evidence | length }}</span></div>
+    <div class="row"><span>Recordings indexed/recovered</span><span>{{ manifest.recordings_summary.count }}</span></div>
+    <div class="row"><span>Deletion findings</span><span>{{ manifest.deletion_findings | length }}</span></div>
+    <div class="row"><span>Anchors</span><span>{{ manifest.anchors | length }}</span></div>
+  </div>
+</div>
+
+<div class="section-break"></div>
+<h2>1. SOP / evidence intake record</h2>
+<p class="muted small">Per SWGDE-aligned intake (docs/02-BACKEND.md §5): device-displayed time is compared against a reference clock at seizure and stored as a clock observation. Raw observations below; normalised multi-clock timelines are produced by the AI timeline workstream where available.</p>
+<table>
+  <tr><th>Image</th><th>Source</th><th>Channel</th><th>Device time</th><th>Reference time</th><th>Offset (device − true)</th></tr>
+  {% for obs in manifest.clock_observations %}
+  <tr>
+    <td class="mono">{{ obs.image_id }}</td>
+    <td>{{ obs.source }}</td>
+    <td>{{ obs.channel if obs.channel is not none else "device-wide" }}</td>
+    <td class="mono">{{ obs.device_ts_us | fmt_us }}</td>
+    <td class="mono">{{ obs.reference_ts_us | fmt_us if obs.reference_ts_us is not none else "—" }}</td>
+    <td class="mono">{{ "%+d"|format(obs.offset_us) }} µs</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted">No clock observations recorded.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>2. Evidence and hashes</h2>
+<table>
+  <tr><th>ID</th><th>Path</th><th>Format</th><th>Size</th><th>SHA-256</th><th>MD5</th><th>Verified</th></tr>
+  {% for e in manifest.evidence %}
+  <tr>
+    <td class="mono">{{ e.id }}</td>
+    <td>{{ e.path }}</td>
+    <td>{{ e.format }}</td>
+    <td>{{ e.size_bytes }} B</td>
+    <td class="mono">{{ e.sha256 }}</td>
+    <td class="mono">{{ e.md5 }}</td>
+    <td>{% if e.verified %}<span class="chip chip-ok">verified</span>{% else %}<span class="chip chip-warn">unverified</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>3. Identification (vendor/format matches)</h2>
+{% for image_id, matches in manifest.vendor_matches.items() %}
+<h3 class="mono">{{ image_id }}</h3>
+<table>
+  <tr><th>Family</th><th>Display name</th><th>Tier</th><th>Confidence</th><th>Model</th><th>Serial</th><th>Evidence</th></tr>
+  {% for m in matches %}
+  <tr>
+    <td>{{ m.family }}</td>
+    <td>{{ m.display_name }}</td>
+    <td><span class="tier-badge">{{ m.tier }}</span></td>
+    <td>{{ "%.2f"|format(m.confidence) }}</td>
+    <td>{{ m.model or "—" }}</td>
+    <td>{{ m.serial or "—" }}</td>
+    <td class="small">{{ m.evidence | join("; ") }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No vendor/format matches recorded.</p>
+{% endfor %}
+
+<h2>4. Recordings</h2>
+<table>
+  <tr><th>ID</th><th>Image</th><th>Channel</th><th>Stream</th><th>Start</th><th>End</th><th>Source</th><th>Deleted</th></tr>
+  {% for r in manifest.recordings_summary.recordings %}
+  <tr>
+    <td class="mono">{{ r.id }}</td>
+    <td class="mono">{{ r.image_id }}</td>
+    <td>{{ r.channel }}</td>
+    <td>{{ r.stream }}</td>
+    <td class="mono">{{ r.start_ts_us | fmt_us }}</td>
+    <td class="mono">{{ r.end_ts_us | fmt_us }}</td>
+    <td><span class="tier-badge">{{ r.source }}</span></td>
+    <td>{% if r.deleted %}<span class="chip chip-danger">deleted</span>{% else %}<span class="chip chip-ok">live</span>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">No recordings.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>5. Recovered footage and deletion findings</h2>
+<table>
+  <tr><th>ID</th><th>Image</th><th>Channel</th><th>Window</th><th>Method</th><th>Frames recovered</th><th>Bytes</th><th>Confidence</th></tr>
+  {% for d in manifest.deletion_findings %}
+  <tr>
+    <td class="mono">{{ d.id }}</td>
+    <td class="mono">{{ d.image_id }}</td>
+    <td>{{ d.channel if d.channel is not none else "—" }}</td>
+    <td class="mono">{{ d.start_ts_us | fmt_us }} – {{ d.end_ts_us | fmt_us }}</td>
+    <td><span class="tier-badge">{{ d.method }}</span></td>
+    <td>{{ d.frames_recovered }}</td>
+    <td>{{ d.bytes_recovered }} B</td>
+    <td>{{ "%.2f"|format(d.confidence) }}</td>
+  </tr>
+  {% endfor %}
+  {% if not manifest.deletion_findings %}
+  <tr><td colspan="8" class="muted">No deletion findings.</td></tr>
+  {% endif %}
+</table>
+{% for d in manifest.deletion_findings %}
+<p class="small"><strong class="mono">{{ d.id }}</strong> — {{ d.reasons | join("; ") }}</p>
+{% endfor %}
+
+{% if thumbnails %}
+<h3>Representative recovered frames</h3>
+<div class="thumbs">
+  {% for t in thumbnails %}
+  <div class="thumb">
+    <img src="data:image/jpeg;base64,{{ t.image_b64 }}">
+    <div class="cap mono">{{ t.frame_id | shorthash }} · ch {{ t.channel }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>6. Device log excerpts</h2>
+<table>
+  <tr><th>Image</th><th>Time (device)</th><th>Kind</th><th>User</th><th>Channel</th></tr>
+  {% for l in manifest.log_events %}
+  <tr>
+    <td class="mono">{{ l.image_id }}</td>
+    <td class="mono">{{ l.ts_device_us | fmt_us }}</td>
+    <td>{{ l.kind }}</td>
+    <td>{{ l.user or "—" }}</td>
+    <td>{{ l.channel if l.channel is not none else "—" }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">No device log events parsed for this case.</td></tr>
+  {% endfor %}
+</table>
+
+{% if manifest.accepted_ai_drafts %}
+<h2>7. Accepted AI drafts</h2>
+<p class="muted small">Every sentence below was drafted by Claude, cites the evidence IDs it was drafted from, and was explicitly accepted by an examiner (CLAUDE.md rule 6: the LLM never produces a finding on its own).</p>
+{% for draft in manifest.accepted_ai_drafts %}
+<div class="notice"><span class="chip chip-ai">AI draft · accepted by {{ draft.accepted_by }}</span><p>{{ draft.text }}</p></div>
+{% endfor %}
+{% endif %}
+
+<h2>8. Custody summary</h2>
+<table>
+  <tr><th>Custody chain head hash</th><td class="mono">{{ manifest.custody.head_hash }}</td></tr>
+  <tr><th>Chain length</th><td>{{ manifest.custody.length }}</td></tr>
+</table>
+<table>
+  <tr><th>Anchor</th><th>Backend</th><th>Seq range</th><th>Merkle root</th><th>Anchored at</th></tr>
+  {% for a in manifest.anchors %}
+  <tr>
+    <td class="mono">{{ a.id }}</td>
+    <td><span class="tier-badge">{{ a.backend }}</span></td>
+    <td>{{ a.from_seq }}–{{ a.to_seq }}</td>
+    <td class="mono">{{ a.merkle_root | shorthash }}</td>
+    <td class="mono">{{ a.ts_utc }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">No anchors recorded at report generation time.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>9. Limitations</h2>
+<ul class="limitations">
+  {% for item in manifest.limitations %}
+  <li>{{ item }}</li>
+  {% endfor %}
+</ul>
+
+<div class="section-break"></div>
+<h2>10. BSA Section 63 certificate</h2>
+<div class="notice">{{ certificate.template_note }}</div>
+{% include "_certificate_body.html" %}
+
+<div class="section-break"></div>
+<h2>Appendix — full manifest hash list</h2>
+<table>
+  <tr><th>Item</th><th>Algorithm</th><th>Value</th></tr>
+  {% for row in appendix %}
+  <tr><td>{{ row.item }}</td><td>{{ row.algorithm }}</td><td class="mono small">{{ row.value }}</td></tr>
+  {% endfor %}
+</table>
+
+</body>
+</html>

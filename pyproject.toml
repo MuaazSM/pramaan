@@ -116,3 +116,24 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["dramatiq.*"]
 ignore_missing_imports = true
+
+# weasyprint/playwright/pyhanko/pyhanko_certvalidator ship no py.typed
+# marker / stubs (task B3, docs/02-BACKEND.md §9). weasyprint is imported
+# lazily inside a try/except OSError/ImportError guard
+# (packages/reporting/pramaan_reporting/pdf.py) so a missing native library
+# never crashes report generation — it falls back to the Playwright/
+# Chromium backend.
+[[tool.mypy.overrides]]
+module = ["weasyprint.*", "playwright.*", "pyhanko.*", "pyhanko_certvalidator.*"]
+ignore_missing_imports = true
+
+# pramaan_formats ships no py.typed marker either (packages/formats is
+# CORE/C2's task, not B3's — adding one there caused unrelated
+# "unused type: ignore" / return-type fallout in apps/worker's own registry
+# module when trialled, so this task uses the same ignore_missing_imports
+# treatment as the other untyped third-party deps above instead of editing
+# a file outside its owned paths). packages/export/pramaan_export/mux.py
+# only uses pramaan_formats.nalutil's NAL-splitting helpers.
+[[tool.mypy.overrides]]
+module = ["pramaan_formats.*"]
+ignore_missing_imports = true

@@ -4,6 +4,17 @@
       "AnalyticsRunRequest": {
         "additionalProperties": false,
         "properties": {
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
           "stages": {
             "anyOf": [
               {

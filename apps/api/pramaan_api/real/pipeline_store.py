@@ -94,10 +94,14 @@ def list_frames(
     frame_type: str | None = None,
     frm: int | None = None,
     to: int | None = None,
+    recording_id: str | None = None,
     limit: int = 500,
 ) -> list[FrameRef]:
     clauses: list[str] = []
     params: list[Any] = []
+    if recording_id is not None:
+        clauses.append("recording_id = ?")
+        params.append(recording_id)
     if channel is not None:
         clauses.append("channel = ?")
         params.append(channel)

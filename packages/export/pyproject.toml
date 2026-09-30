@@ -1,9 +1,18 @@
 [project]
 name = "pramaan-export"
 version = "0.1.0"
-description = "Signed MP4 export writer."
+description = "Signed MP4 export writer (stream copy, embedded + detached Ed25519 signature)."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pramaan-core",
+    "pramaan-custody",
+    "pramaan-formats",
+]
+
+[tool.uv.sources]
+pramaan-core = { workspace = true }
+pramaan-custody = { workspace = true }
+pramaan-formats = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -11,6 +20,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pramaan_export"]
+artifacts = ["pramaan_export/py.typed"]
 
 [tool.ruff]
 line-length = 100

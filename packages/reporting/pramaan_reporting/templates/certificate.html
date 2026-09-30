@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BSA Section 63 certificate — {{ certificate.case_number }}</title>
+<style>{{ css }}</style>
+</head>
+<body>
+<div class="cover" style="padding-top:0;">
+  <div class="case-id-marker">{{ certificate.case_number }}</div>
+  <div class="report-hash-marker">{{ envelope.report_sha256 | shorthash }}</div>
+  <div class="wordmark" style="font-size:18pt;">pramaan<span class="dot">.</span></div>
+  <h1 style="margin-top:18px;">Certificate under Section 63, Bharatiya Sakshya Adhiniyam, 2023</h1>
+  <div class="notice">{{ certificate.template_note }}</div>
+</div>
+{% include "_certificate_body.html" %}
+</body>
+</html>

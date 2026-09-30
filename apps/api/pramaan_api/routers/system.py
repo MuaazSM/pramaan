@@ -15,4 +15,13 @@ router = APIRouter(tags=["system"])
 
 @router.get("/system/health", response_model=HealthStatus)
 def health(settings: Settings = Depends(get_settings)) -> HealthStatus:
-    return store.system_health(llm_enabled=settings.llm_enabled, stub_mode=settings.stub_mode)
+    result = store.system_health(llm_enabled=settings.llm_enabled, stub_mode=settings.stub_mode)
+    if settings.stub_mode:
+        return result
+    # Real mode (task B3): report whether a PDF backend (WeasyPrint, or the
+    # Playwright/Chromium fallback) is actually usable in this process, and
+    # that the Fabric anchor backend is, as documented, not implemented
+    # (docs/progress/B1.md "Decisions" — LocalAnchor only).
+    from pramaan_reporting.pdf import pdf_backend_available
+
+    return result.model_copy(update={"weasyprint": pdf_backend_available() is not None})

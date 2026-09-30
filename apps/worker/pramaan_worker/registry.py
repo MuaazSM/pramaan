@@ -156,7 +156,7 @@ def get_fingerprinter() -> Fingerprinter | None:
     if _fingerprinter is not None:
         return _fingerprinter
     try:
-        from pramaan_formats.fingerprint import match  # type: ignore[import-untyped]
+        from pramaan_formats.fingerprint import match
 
         return match  # type: ignore[no-any-return]
     except (ImportError, AttributeError):
@@ -167,7 +167,7 @@ def get_vendor_parser(family: str) -> VendorParser | None:
     if family in _vendor_parsers:
         return _vendor_parsers[family]
     try:
-        from pramaan_formats.registry import get as _get  # type: ignore[import-untyped]
+        from pramaan_formats.registry import get as _get
 
         return _get(family)  # type: ignore[no-any-return]
     except (ImportError, AttributeError, LookupError):

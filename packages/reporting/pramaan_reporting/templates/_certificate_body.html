@@ -1,0 +1,48 @@
+<h3>Part A — to be completed by the party/person in charge of the device</h3>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>Case</td><td>{{ certificate.case_title }} ({{ certificate.case_number }})</td></tr>
+</table>
+{% for item in certificate.part_a.records %}
+<table>
+  <tr><th colspan="2">Electronic record {{ loop.index }}</th></tr>
+  <tr><td>Identity of the electronic record</td><td>{{ item.identity }}</td></tr>
+  <tr><td>Device make / model</td><td>{{ item.make_model }}</td></tr>
+  <tr><td>Device serial</td><td>{{ item.serial }}</td></tr>
+  <tr><td>How the record was produced</td><td>{{ item.how_produced }}</td></tr>
+  <tr><td>Size</td><td>{{ item.size_bytes }} bytes</td></tr>
+  <tr><td>Acquired (UTC)</td><td class="mono">{{ item.acquired_utc }}</td></tr>
+</table>
+{% endfor %}
+<h3>Hash values (Part A)</h3>
+<table>
+  <tr><th>Item</th><th>Algorithm</th><th>Value</th></tr>
+  {% for row in certificate.part_a.hash_lines %}
+  <tr><td>{{ row.item }}</td><td>{{ row.algorithm }}</td><td class="mono small">{{ row.value }}</td></tr>
+  {% endfor %}
+</table>
+<div class="sig-line">Signature, name, designation and date (person in charge) — to be completed by wet or digital signature.</div>
+
+<div class="section-break"></div>
+<h3>Part B — to be completed by the expert examiner</h3>
+<table>
+  <tr><td>Examiner</td><td>{{ certificate.part_b.examiner.username }} ({{ certificate.part_b.examiner.role }})</td></tr>
+  <tr><td>Laboratory</td><td>{{ certificate.part_b.lab }}</td></tr>
+</table>
+<h4>Examination performed</h4>
+<ul>
+  {% for step in certificate.part_b.examination_performed %}
+  <li>{{ step }}</li>
+  {% endfor %}
+</ul>
+<h4>Hash values (Part B)</h4>
+<table>
+  <tr><th>Item</th><th>Algorithm</th><th>Value</th></tr>
+  {% for row in certificate.part_b.hash_lines %}
+  <tr><td>{{ row.item }}</td><td>{{ row.algorithm }}</td><td class="mono small">{{ row.value }}</td></tr>
+  {% endfor %}
+</table>
+<p class="small">{{ certificate.part_b.verification_note }}</p>
+<h4>Declaration</h4>
+<p class="small">{{ certificate.declaration_placeholder }}</p>
+<div class="sig-line">Signature, name, designation and date (expert examiner) — to be completed by wet or digital signature.</div>
