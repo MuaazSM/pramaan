@@ -244,7 +244,7 @@ class TestBuildClockModel:
 
 
 def _table(rows: list[dict[str, object]]) -> pa.Table:
-    return pa.table({name: [row[name] for row in rows] for name in SCHEMA.names}, schema=SCHEMA)
+    return pa.table({name: [row.get(name) for row in rows] for name in SCHEMA.names}, schema=SCHEMA)
 
 
 def _frame_row(
