@@ -6,15 +6,18 @@
  */
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, PlaySquare, HardDrive, ShieldAlert, Clock3, Radio } from "lucide-react";
+import { Plus, PlaySquare, HardDrive, ShieldAlert, Clock3, Radio, Sparkles } from "lucide-react";
 import { ScreenShell } from "@/components/shell/screen-shell";
 import { QueryErrorState } from "@/components/shell/query-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { InfoHint } from "@/components/ui/info-hint";
+import { TechnicalDetails } from "@/components/ui/technical-details";
 import { IntegrityChip } from "@/components/signature/integrity-chip";
 import { TierBadge, type Tier } from "@/components/signature/tier-badge";
 import { formatBytes, formatTimecode } from "@/lib/format";
+import { fileName, GLOSSARY } from "@/lib/humanize";
 import { api } from "@/api/client";
 import { errorFromResponse } from "@/lib/api-error";
 
@@ -139,10 +142,36 @@ function CaseOverviewScreen() {
           </div>
         )}
 
+        {/* "What we found" — the 30-second summary (F7: story first, bytes on demand). A plain
+            sentence built from the same structured fields the stat row below shows as numbers,
+            so a first-time viewer gets the story before the data. */}
+        {!caseQuery.isLoading && c && (
+          <div className="rounded-[var(--radius-card)] border border-line bg-panel p-4">
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <Sparkles size={13} strokeWidth={1.75} className="text-accent-text" />
+              <h2 className="text-section text-text">What we found</h2>
+            </div>
+            <p className="text-base text-text-2">
+              {evidence.length === 0 ? (
+                "No evidence has been registered for this case yet."
+              ) : (
+                <>
+                  {evidenceQuery.isLoading || deletionsQuery.isLoading || recordingsQuery.isLoading || clocksQuery.isLoading
+                    ? "Loading a summary of this case…"
+                    : caseSummarySentence({ evidenceCount: evidence.length, channels, deletionCount: deletions.length, recoveredSeconds, avgConfidence, allVerified })}
+                </>
+              )}
+            </p>
+          </div>
+        )}
+
         {/* Integrity summary */}
         <div className="rounded-[var(--radius-card)] border border-line bg-panel p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-section text-text">Integrity summary</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-section text-text">Integrity summary</h2>
+              <InfoHint label="Every evidence image's hash is re-computed and compared to the one recorded at acquisition. 'Verified' means the bytes have not changed since." />
+            </div>
             {evidence.length > 0 && (
               <Badge variant={allVerified ? "ok" : "warn"}>{allVerified ? "all verified" : "verification pending"}</Badge>
             )}
@@ -156,7 +185,12 @@ function CaseOverviewScreen() {
           ) : (
             <div className="flex flex-col items-start gap-2">
               {evidence.map((e) => (
-                <IntegrityChip key={e.id} state={e.verified ? "verified" : "pending"} hash={e.sha256} />
+                <div key={e.id} className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-[9rem] truncate text-label text-text-2" title={e.path}>
+                    {fileName(e.path)}
+                  </span>
+                  <IntegrityChip state={e.verified ? "verified" : "pending"} hash={e.sha256} />
+                </div>
               ))}
             </div>
           )}
@@ -166,16 +200,23 @@ function CaseOverviewScreen() {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {/* "—" (not "0") whenever the backing query errored — a real zero and "the request
               failed so we don't actually know" must never look the same in a forensic summary. */}
-          <StatCard icon={Radio} label="Channels" value={recordingsQuery.isError ? "—" : channels || "—"} />
-          <StatCard icon={ShieldAlert} label="Deletion events" value={deletionsQuery.isError ? "—" : deletions.length} />
+          <StatCard icon={Radio} label="Channels" hint={GLOSSARY.channels} value={recordingsQuery.isError ? "—" : channels || "—"} />
+          <StatCard
+            icon={ShieldAlert}
+            label="Deletion events"
+            hint={GLOSSARY["deletion event"]}
+            value={deletionsQuery.isError ? "—" : deletions.length}
+          />
           <StatCard
             icon={Clock3}
             label="Recovered footage"
+            hint={GLOSSARY["recovered footage"]}
             value={deletionsQuery.isError ? "—" : `${Math.round(recoveredSeconds / 60)} min`}
           />
           <StatCard
             icon={HardDrive}
             label="Clock confidence"
+            hint={GLOSSARY["clock confidence"]}
             value={clocksQuery.isError ? "—" : avgConfidence != null ? `${Math.round(avgConfidence * 100)}%` : "—"}
           />
         </div>
@@ -226,12 +267,54 @@ function CaseOverviewScreen() {
   );
 }
 
-function StatCard({ icon: Icon, label, value }: { icon: typeof Radio; label: string; value: string | number }) {
+/** The case overview's 30-second story, built entirely from fields the stat row already has. */
+function caseSummarySentence({
+  evidenceCount,
+  channels,
+  deletionCount,
+  recoveredSeconds,
+  avgConfidence,
+  allVerified,
+}: {
+  evidenceCount: number;
+  channels: number;
+  deletionCount: number;
+  recoveredSeconds: number;
+  avgConfidence: number | null;
+  allVerified: boolean;
+}): string {
+  const evidencePart = `${evidenceCount} evidence ${evidenceCount === 1 ? "image was" : "images were"} examined${channels > 0 ? ` across ${channels} camera channel${channels === 1 ? "" : "s"}` : ""}.`;
+  const deletionPart =
+    deletionCount === 0
+      ? " No deletions were found."
+      : ` ${deletionCount} deletion event${deletionCount === 1 ? "" : "s"} ${deletionCount === 1 ? "was" : "were"} found, and about ${Math.max(1, Math.round(recoveredSeconds / 60))} minute${Math.round(recoveredSeconds / 60) === 1 ? "" : "s"} of footage was recovered from deleted space.`;
+  const clockPart =
+    avgConfidence != null
+      ? avgConfidence >= 0.85
+        ? " Recovered timestamps are reliable."
+        : " Some recovered timestamps have low confidence and may need examiner confirmation."
+      : "";
+  const integrityPart = allVerified ? " All evidence hashes are verified." : " Some evidence is still awaiting hash verification.";
+  return `${evidencePart}${deletionPart}${clockPart}${integrityPart}`;
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  hint,
+  value,
+}: {
+  icon: typeof Radio;
+  label: string;
+  hint?: string;
+  value: string | number;
+}) {
   return (
     <div className="rounded-[var(--radius-card)] border border-line bg-card p-4">
       <div className="mb-1.5 flex items-center gap-1.5 text-text-3">
         <Icon size={13} strokeWidth={1.75} />
         <span className="text-caption">{label}</span>
+        {hint && <InfoHint label={hint} />}
       </div>
       <p className="tabular-nums text-xl font-semibold text-text">{value}</p>
     </div>
@@ -260,21 +343,41 @@ function EvidenceCard({
   const match = fpQuery.data?.[0];
 
   return (
-    <Link
-      to="/cases/$cid/evidence/$eid"
-      params={{ cid, eid: evidenceId }}
-      className="focus-ring flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-card p-3 transition-colors hover:border-line-strong"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-data text-sm text-text">{path}</span>
-        {match && <TierBadge tier={match.tier as Tier} />}
-      </div>
-      <p className="truncate text-sm text-text-2">{match?.display_name ?? "Identifying…"}</p>
-      <div className="flex items-center justify-between gap-2">
-        <IntegrityChip state={verified ? "verified" : "pending"} hash={sha256} />
-        <span className="font-data tabular-nums text-caption text-text-3">{formatBytes(size)}</span>
-      </div>
-    </Link>
+    <div className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-card p-3 transition-colors hover:border-line-strong">
+      <Link to="/cases/$cid/evidence/$eid" params={{ cid, eid: evidenceId }} className="focus-ring flex flex-col gap-2 rounded-[var(--radius-control)]">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-base font-medium text-text" title={path}>
+            {fileName(path)}
+          </span>
+          {match && (
+            <span title={GLOSSARY.tier}>
+              <TierBadge tier={match.tier as Tier} />
+            </span>
+          )}
+        </div>
+        {/* One key fact in plain words, not raw identification-reason strings — the technical
+            match reasons stay on the evidence-detail screen's Identification panel. */}
+        <p className="truncate text-sm text-text-2">{match?.display_name ?? "Identifying…"}</p>
+        <div className="flex items-center justify-between gap-2">
+          <IntegrityChip state={verified ? "verified" : "pending"} hash={sha256} />
+          <span className="font-data tabular-nums text-caption text-text-3">{formatBytes(size)}</span>
+        </div>
+      </Link>
+      <TechnicalDetails summary="Technical details">
+        <dl className="grid grid-cols-1 gap-1.5">
+          <div>
+            <dt className="text-label text-text-3">Full path</dt>
+            <dd className="truncate font-data text-caption text-text-2" title={path}>
+              {path}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-label text-text-3">Evidence ID</dt>
+            <dd className="font-data text-caption text-text-2">{evidenceId}</dd>
+          </div>
+        </dl>
+      </TechnicalDetails>
+    </div>
   );
 }
 

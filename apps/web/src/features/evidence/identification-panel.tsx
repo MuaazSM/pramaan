@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { ScanSearch, Hash } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InfoHint } from "@/components/ui/info-hint";
 import { TierBadge, type Tier } from "@/components/signature/tier-badge";
 import { api } from "@/api/client";
+import { GLOSSARY } from "@/lib/humanize";
 
 /**
  * Identification: ranked vendor matches with reasons + OEM lineage ("Sold as: …"), per
@@ -39,6 +41,7 @@ export function IdentificationPanel({ eid }: { eid: string }) {
                 <div className="flex items-center gap-2">
                   <span className="text-base font-medium text-text">{match.display_name}</span>
                   <TierBadge tier={match.tier as Tier} />
+                  <InfoHint label={GLOSSARY.tier} />
                 </div>
                 <span className="font-data text-sm tabular-nums text-text-2">{Math.round(match.confidence * 100)}% confidence</span>
               </div>

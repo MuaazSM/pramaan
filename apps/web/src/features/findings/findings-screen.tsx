@@ -7,14 +7,17 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ShieldAlert, HardDrive, Video, PlaySquare, Binary, Hash, ChevronRight } from "lucide-react";
+import { ShieldAlert, HardDrive, Video, PlaySquare, Binary, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InfoHint } from "@/components/ui/info-hint";
+import { TechnicalDetails } from "@/components/ui/technical-details";
 import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
 import { errorFromResponse } from "@/lib/api-error";
-import { formatTimecodeUs, formatBytes } from "@/lib/format";
+import { formatTimecodeUs, formatDuration } from "@/lib/format";
+import { capList, confidenceExplanation, findingHeadline, humanizeReason, recoveredSummary } from "@/lib/humanize";
 import type { components } from "@/api/schema.gen";
 
 type DeletionFinding = components["schemas"]["DeletionFinding"];
@@ -25,6 +28,9 @@ const METHOD_LABEL: Record<DeletionFinding["method"], string> = {
   overwrite: "Overwrite",
   unknown: "Unknown method",
 };
+
+/** How many sample frame ids to show inline before collapsing the rest. */
+const SAMPLE_FRAME_COUNT = 4;
 
 export function FindingsScreen({ cid }: { cid: string }) {
   const query = useQuery({
@@ -65,25 +71,28 @@ export function FindingsScreen({ cid }: { cid: string }) {
 }
 
 function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }) {
-  const frameChips = Array.from({ length: Math.min(3, Math.max(1, Math.round(finding.frames_recovered / 80))) }, (_, i) => ({
-    label: `frame_${finding.image_id}_ch${finding.channel ?? "x"}_${String(i + 1).padStart(3, "0")}`,
-  }));
+  // The real API's evidence_refs are the actual recovered frame ids (frm_…, sometimes joined by a
+  // handful of log/recording ids) — often 100+ for a large deletion. Show a headline count plus a
+  // few real, clickable samples instead of dumping every id as a chip; the rest stay one click
+  // away in "Technical details" rather than gone.
+  const { shown: sampleRefs, more: moreRefs } = capList(finding.evidence_refs, SAMPLE_FRAME_COUNT);
+  const windowSeconds = Math.max(0, (finding.end_ts_us - finding.start_ts_us) / 1_000_000);
 
   return (
     <li className="rounded-[var(--radius-panel)] border border-line bg-panel p-5">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-[var(--radius-card)] border border-[color-mix(in_oklab,var(--recovered)_40%,transparent)] bg-[var(--recovered-tint)]">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-card)] border border-[color-mix(in_oklab,var(--recovered)_40%,transparent)] bg-[var(--recovered-tint)]">
             <ShieldAlert size={16} strokeWidth={1.75} className="text-recovered" />
           </span>
           <div>
-            {/* F6: "on channel N", not "· CHN" — plain language instead of a dot-joined
-                abbreviation (docs/progress/F6.md). */}
-            <h2 className="text-section text-text">
+            {/* F7: the headline sentence leads — plain language built from the same structured
+                fields the stat grid below shows as numbers (docs/progress/F7.md). */}
+            <p className="text-base text-text">{findingHeadline(finding)}</p>
+            <p className="mt-1 flex items-center gap-1 text-label text-text-3">
               {METHOD_LABEL[finding.method]} deletion{finding.channel != null ? ` on channel ${finding.channel}` : ""}
-            </h2>
-            <p className="mt-0.5 font-data text-sm tabular-nums text-text-2">
-              {formatTimecodeUs(finding.start_ts_us)} → {formatTimecodeUs(finding.end_ts_us)}
+              {" · "}
+              <DeletionWindowBar startUs={finding.start_ts_us} endUs={finding.end_ts_us} />
             </p>
           </div>
         </div>
@@ -92,19 +101,20 @@ function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }
 
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Actor" value={finding.actor ?? "unknown"} />
-        <Stat label="Frames recovered" value={finding.frames_recovered.toLocaleString()} mono />
-        <Stat label="Bytes recovered" value={formatBytes(finding.bytes_recovered)} mono />
+        <Stat label="Recovered" value={recoveredSummary(finding.frames_recovered, finding.bytes_recovered)} />
+        <Stat label="Deletion window" value={`${formatDuration(windowSeconds)} long`} />
         <Stat label="Action time" value={finding.action_ts_us != null ? formatTimecodeUs(finding.action_ts_us) : "—"} mono />
       </div>
 
       <div className="mb-4">
-        <div className="mb-1 flex items-center justify-between text-label text-text-2">
+        <div className="mb-1 flex items-center gap-1.5 text-label text-text-2">
           <span>Confidence</span>
-          <span className="font-data tabular-nums">{Math.round(finding.confidence * 100)}%</span>
+          <span className="ml-auto font-data tabular-nums">{Math.round(finding.confidence * 100)}%</span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-control">
           <div className="h-full rounded-full bg-recovered" style={{ width: `${finding.confidence * 100}%` }} />
         </div>
+        <p className="mt-1 text-caption text-text-3">{confidenceExplanation(finding.reasons.length)}</p>
       </div>
 
       <div className="mb-4">
@@ -112,49 +122,76 @@ function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }
         <ul className="flex flex-col gap-1">
           {finding.reasons.map((reason, i) => (
             <li key={i} className="flex items-start gap-1.5 text-sm text-text-2">
-              <Hash size={11} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-3" />
-              <span className="font-data">{reason}</span>
+              <span className="mt-1.5 size-1 shrink-0 rounded-full bg-text-3" aria-hidden />
+              <span>{humanizeReason(reason)}</span>
             </li>
           ))}
         </ul>
+        {finding.reasons.some((r) => humanizeReason(r) !== r) && (
+          <TechnicalDetails summary="Raw reason data" className="mt-2">
+            <ul className="flex flex-col gap-1">
+              {finding.reasons.map((reason, i) => (
+                <li key={i} className="font-data text-caption text-text-2">
+                  {reason}
+                </li>
+              ))}
+            </ul>
+          </TechnicalDetails>
+        )}
       </div>
 
       {finding.evidence_refs.length > 0 && (
         <div className="mb-4">
-          <h3 className="mb-1.5 text-label text-text-2">Evidence refs</h3>
-          <div className="flex flex-wrap gap-1.5">
-            {finding.evidence_refs.map((ref) => (
-              <span key={ref} className="rounded-full border border-line-strong bg-control px-2 py-0.5 font-data text-caption text-text-2">
-                {ref}
-              </span>
-            ))}
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <h3 className="text-label text-text-2">Recovered frames</h3>
+            <InfoHint label="Every recovered frame links back to its exact bytes on disk. A few are shown here as samples; the full list is in Technical details." />
           </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {sampleRefs.map((ref) => (
+              <Link
+                key={ref}
+                to="/cases/$cid/frames/$fid/prove"
+                params={{ cid, fid: ref }}
+                className="focus-ring flex items-center gap-1 rounded-full border border-line-strong bg-control px-2 py-0.5 font-data text-caption text-text-2 transition-colors hover:border-[color-mix(in_oklab,var(--brand-500)_40%,transparent)] hover:text-accent-text"
+              >
+                <Binary size={10} strokeWidth={1.75} />
+                {ref.length > 14 ? `${ref.slice(0, 10)}…` : ref}
+                <ChevronRight size={10} strokeWidth={1.75} />
+              </Link>
+            ))}
+            {moreRefs > 0 && (
+              <span className="rounded-full border border-line-strong bg-control px-2 py-0.5 text-caption text-text-3">
+                +{moreRefs} more
+              </span>
+            )}
+          </div>
+          {moreRefs > 0 && (
+            <TechnicalDetails summary={`All ${finding.evidence_refs.length} evidence references`} className="mt-2">
+              <div className="flex flex-wrap gap-1.5">
+                {finding.evidence_refs.map((ref) => (
+                  <Link
+                    key={ref}
+                    to="/cases/$cid/frames/$fid/prove"
+                    params={{ cid, fid: ref }}
+                    className="focus-ring rounded border border-line-strong px-1.5 py-0.5 font-data text-caption text-text-2 hover:text-accent-text"
+                  >
+                    {ref}
+                  </Link>
+                ))}
+              </div>
+            </TechnicalDetails>
+          )}
         </div>
       )}
 
-      <div className="mb-4">
-        {/* F6: "Recovered frames (sample)" — dropped the spaced em dash and the "Prove it" repeat
-            (each chip already links to Prove it; naming it twice was the redundant eyebrow the
-            brief calls out). */}
-        <h3 className="mb-1.5 text-label text-text-2">Recovered frames (sample)</h3>
-        <div className="flex flex-wrap gap-1.5">
-          {frameChips.map((chip) => (
-            <Link
-              key={chip.label}
-              to="/cases/$cid/frames/$fid/prove"
-              params={{ cid, fid: chip.label }}
-              className="focus-ring flex items-center gap-1 rounded-full border border-line-strong bg-control px-2 py-0.5 font-data text-caption text-text-2 transition-colors hover:border-[color-mix(in_oklab,var(--brand-500)_40%,transparent)] hover:text-accent-text"
-            >
-              <Binary size={10} strokeWidth={1.75} />
-              {chip.label}
-              <ChevronRight size={10} strokeWidth={1.75} />
-            </Link>
-          ))}
-        </div>
-      </div>
-
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild size="sm">
+          <Link to="/cases/$cid/frames/$fid/prove" params={{ cid, fid: finding.evidence_refs[0] ?? finding.image_id }}>
+            <Binary size={13} strokeWidth={1.75} />
+            Prove it
+          </Link>
+        </Button>
+        <Button asChild size="sm" variant="secondary">
           <Link to="/cases/$cid/evidence/$eid" params={{ cid, eid: finding.image_id }}>
             <HardDrive size={13} strokeWidth={1.75} />
             Open evidence
@@ -174,6 +211,30 @@ function FindingCard({ cid, finding }: { cid: string; finding: DeletionFinding }
         </Button>
       </div>
     </li>
+  );
+}
+
+/**
+ * A compact inline visual of where in the day a deletion window falls — a single 96px bar
+ * representing 00:00-24:00 IST with the deletion window highlighted, so a reader gets a sense of
+ * "when" without parsing two timestamps. Purely decorative-informational; the exact window is
+ * still given in text (the stat grid's "Deletion window"/"Action time" and the finding headline).
+ */
+function DeletionWindowBar({ startUs, endUs }: { startUs: number; endUs: number }) {
+  const istOffsetUs = 5.5 * 3600 * 1_000_000;
+  const dayUs = 24 * 3600 * 1_000_000;
+  const dayStartUs = Math.floor((startUs + istOffsetUs) / dayUs) * dayUs - istOffsetUs;
+  const pct = (us: number) => Math.min(100, Math.max(0, ((us - dayStartUs) / dayUs) * 100));
+  const left = pct(startUs);
+  const width = Math.max(0.8, pct(endUs) - left);
+  return (
+    <span
+      className="relative inline-block h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-control align-middle"
+      title="Position of the deletion window within the day (IST)"
+      aria-hidden
+    >
+      <span className="absolute inset-y-0 rounded-full bg-recovered" style={{ left: `${left}%`, width: `${width}%` }} />
+    </span>
   );
 }
 

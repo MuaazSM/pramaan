@@ -8,11 +8,13 @@ import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { TechnicalDetails } from "@/components/ui/technical-details";
 import { IntegrityChip } from "@/components/signature/integrity-chip";
 import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
 import { errorFromResponse } from "@/lib/api-error";
 import { formatBytes, formatTimecode } from "@/lib/format";
+import { fileName } from "@/lib/humanize";
 import { IdentificationPanel } from "./identification-panel";
 import { PipelinePanel } from "./pipeline-panel";
 import { InferredLayoutPanel } from "./inferred-layout-panel";
@@ -54,9 +56,12 @@ export function EvidenceDetailScreen({ cid, eid }: { cid: string; eid: string })
     <div className="mx-auto flex max-w-5xl flex-col gap-8 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          {/* File path is evidence data (BRAND.md §4 lists file paths alongside hashes/offsets) —
-              mono, sized as a page title since this is the screen's one identifying heading. */}
-          <h1 className="truncate font-data text-lg font-semibold text-text">{e.path}</h1>
+          {/* F7: the file name leads (a first-time viewer reads by name, not by host path) — the
+              full absolute path is evidence data too, so it stays reachable, just in "Technical
+              details" below rather than as the page's one identifying heading. */}
+          <h1 className="truncate text-page-title text-text" title={e.path}>
+            {fileName(e.path)}
+          </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-label text-text-2">
             <Badge variant="neutral">{e.format}</Badge>
             <span className="font-data">{formatBytes(e.size_bytes)}</span>
@@ -70,6 +75,23 @@ export function EvidenceDetailScreen({ cid, eid }: { cid: string; eid: string })
         <ShieldCheck size={13} strokeWidth={1.75} className="shrink-0 text-text-3" />
         MD5 <span className="font-data text-text">{e.md5}</span>
       </div>
+
+      <TechnicalDetails summary="Technical details">
+        <dl className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          <div>
+            <dt className="text-label text-text-3">Full path</dt>
+            <dd className="break-all font-data text-sm text-text">{e.path}</dd>
+          </div>
+          <div>
+            <dt className="text-label text-text-3">Evidence ID</dt>
+            <dd className="font-data text-sm text-text">{e.id}</dd>
+          </div>
+          <div>
+            <dt className="text-label text-text-3">SHA-256</dt>
+            <dd className="break-all font-data text-sm text-text">{e.sha256}</dd>
+          </div>
+        </dl>
+      </TechnicalDetails>
 
       <IdentificationPanel eid={eid} />
       <PipelinePanel cid={cid} eid={eid} />

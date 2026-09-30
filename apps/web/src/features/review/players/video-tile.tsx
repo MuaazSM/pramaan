@@ -2,17 +2,12 @@ import { useEffect, useRef } from "react";
 import { VideoOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTimecode } from "@/lib/format";
+import { SOURCE_PLAIN_LABEL, SOURCE_EXPLANATION, GLOSSARY } from "@/lib/humanize";
 import { usToIso } from "../lib/time";
 import { mapUsToClipSeconds, type ClipMapping } from "../lib/clip-mapping";
 import type { ChannelTimeline } from "../timeline/draw";
 
 export type CoverageSource = "index" | "carved" | "inferred" | null;
-
-const SOURCE_LABEL: Record<Exclude<CoverageSource, null>, string> = {
-  index: "indexed",
-  carved: "recovered",
-  inferred: "inferred",
-};
 
 function coverageAt(ch: ChannelTimeline | undefined, us: number): CoverageSource {
   if (!ch) return null;
@@ -88,7 +83,10 @@ export function VideoTile({ channel, mapping, playheadUs, leader, videoRef }: Vi
           aria-hidden
         />
         {leader && (
-          <span className="absolute right-2 top-2 rounded-full border border-[var(--brand-400)] bg-[var(--ink-950)] px-1.5 py-0.5 text-caption font-medium text-[var(--brand-300)]">
+          <span
+            className="absolute right-2 top-2 rounded-full border border-[var(--brand-400)] bg-[var(--ink-950)] px-1.5 py-0.5 text-caption font-medium text-[var(--brand-300)]"
+            title={GLOSSARY.leader}
+          >
             Leader
           </span>
         )}
@@ -104,8 +102,9 @@ export function VideoTile({ channel, mapping, playheadUs, leader, videoRef }: Vi
                 source === "carved" && "bg-[var(--recovered-tint)] text-recovered",
                 source === "inferred" && "bg-[color-mix(in_oklab,var(--inferred)_14%,transparent)] text-inferred",
               )}
+              title={SOURCE_EXPLANATION[source]}
             >
-              {SOURCE_LABEL[source]}
+              {SOURCE_PLAIN_LABEL[source] ?? source}
             </span>
           )}
           <span className="font-data text-caption tabular-nums text-text-2">{formatTimecode(usToIso(playheadUs))}</span>

@@ -11,6 +11,7 @@ import {
 import { pxToUs, type Viewport } from "./scale";
 import { usePlayheadStore } from "../store/playhead";
 import { cn } from "@/lib/utils";
+import { GLOSSARY } from "@/lib/humanize";
 
 interface TimelineCanvasProps {
   channels: ChannelTimeline[];
@@ -172,12 +173,12 @@ export function TimelineCanvas({ channels, markers, className }: TimelineCanvasP
             />
             <div className="min-w-0 flex-1">
               <div className="truncate text-label font-medium text-text">{ch.label}</div>
-              <div className="flex items-center gap-1 text-caption text-text-3">
+              <div className="flex items-center gap-1 text-caption text-text-3" title={GLOSSARY["clock confidence"]}>
                 <span
                   className={cn("size-1.5 rounded-full", ch.clock.confidence >= 0.9 ? "bg-ok" : "bg-warn")}
                   aria-hidden
                 />
-                {Math.round(ch.clock.confidence * 100)}% clock
+                {Math.round(ch.clock.confidence * 100)}% confidence
               </div>
             </div>
           </div>

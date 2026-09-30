@@ -53,10 +53,14 @@ test.describe("F3b mock e2e", () => {
     await page.getByRole("button", { name: "Copy proof" }).click();
     await expect(page.getByText("Proof copied", { exact: true })).toBeVisible();
 
-    // Frame inspector context panel — clock stack + integrity + Prove it link back to itself.
-    await expect(page.getByText("Clock stack")).toBeVisible();
+    // Frame inspector context panel (F7 reorganised, docs/progress/F7.md): the clock stack and
+    // raw provenance fields are collapsed behind disclosures by default — open them to confirm
+    // the underlying data is still reachable, not just the plain-language summary above it.
+    await expect(page.getByText("Recorded", { exact: false }).first()).toBeVisible();
+    await page.getByText("Why this time? (clock stack)").click();
     await expect(page.getByText("Normalised (IST)")).toBeVisible();
-    await expect(page.getByText("Provenance")).toBeVisible();
+    await page.getByText("Technical details").click();
+    await expect(page.getByText("Evidence image")).toBeVisible();
   });
 
   test("prove-it: mismatch demo frame shows the danger integrity state, not a false verified claim", async ({ page }) => {

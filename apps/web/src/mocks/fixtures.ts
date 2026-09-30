@@ -473,6 +473,24 @@ export const RECORDINGS_BY_CASE: Record<string, Recording[]> = {
   [DEMO_CASE.id]: makeRecordings(),
 };
 
+/**
+ * Deterministic frame-id sequence (xorshift32, fixed seed — no Math.random/Date.now, per
+ * CLAUDE.md's determinism rule) mirroring the real API's `evidence_refs` shape: a large flat list
+ * of real `frm_…` ids, not a handful of log/recording ids. Added for F7 so mock mode reproduces
+ * the same "100+ raw chips" case the real-mode screenshots caught — see docs/progress/F7.md.
+ */
+function frameIdSeq(count: number): string[] {
+  const out: string[] = [];
+  let x = 0x2545f491;
+  for (let i = 0; i < count; i++) {
+    x = (x ^ (x << 13)) >>> 0;
+    x = (x ^ (x >>> 17)) >>> 0;
+    x = (x ^ (x << 5)) >>> 0;
+    out.push(`frm_${x.toString(16).padStart(8, "0")}${i.toString(16).padStart(4, "0")}`);
+  }
+  return out;
+}
+
 export const DELETIONS_BY_CASE: Record<string, DeletionFinding[]> = {
   [DEMO_CASE.id]: [
     {
@@ -491,8 +509,9 @@ export const DELETIONS_BY_CASE: Record<string, DeletionFinding[]> = {
         "hdd_format log event log_hdd_format_001 at 2026-03-10 20:00 device clock, actor admin",
         "213 recordings missing from the index inside the format window",
         "carved frames recovered from unindexed space match channel 3 GOP structure",
+        "214 deleted frame(s) recovered on channel 3 spanning payload offsets 416496-1067450",
       ],
-      evidence_refs: ["log_hdd_format_001", "rec_031", "rec_032"],
+      evidence_refs: frameIdSeq(52),
     },
   ],
 };

@@ -11,17 +11,20 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Binary, FileStack, FileText, PackageOpen, ScanEye, SearchX } from "lucide-react";
+import { Binary, FileStack, FileText, SearchX } from "lucide-react";
 import { api } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InfoHint } from "@/components/ui/info-hint";
+import { TechnicalDetails } from "@/components/ui/technical-details";
 import { ClockStack } from "@/components/signature/clock-stack";
 import { IntegrityChip } from "@/components/signature/integrity-chip";
 import { LineageBreadcrumb, type LineageSegment } from "@/components/signature/lineage-breadcrumb";
 import { QueryErrorState } from "@/components/shell/query-error-state";
 import { errorFromResponse } from "@/lib/api-error";
 import { formatBytes, formatTimecode, shortHash } from "@/lib/format";
+import { SOURCE_PLAIN_LABEL, SOURCE_EXPLANATION } from "@/lib/humanize";
 import { resolveClockStack } from "./lib/clock-readings";
 import { useFrameHex } from "@/features/prove/lib/use-frame-hex";
 
@@ -87,6 +90,7 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
 
   const clock = (clockModelsQuery.data ?? []).find((c) => c.channel === frame.channel);
   const { readings, chosenKey } = resolveClockStack(frame, clock);
+  const chosenReading = readings.find((r) => r.key === chosenKey);
 
   const segments: LineageSegment[] = [
     { label: "Evidence", to: `/cases/${caseId}/evidence/${frame.image_id}` },
@@ -121,30 +125,24 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
 
       <LineageBreadcrumb segments={segments} />
 
-      {/* Metadata */}
+      {/* F7: what this frame is, then when it was recorded, then whether it was deleted/recovered
+          — in that order, plain language first, raw fields collapsed below (docs/progress/F7.md).
+          The chosen/normalised time is the one number a reader needs; the four-clock reasoning
+          behind it lives behind "Why this time?" rather than always-open. */}
       <section>
-        <SectionHeading icon={FileText} label="Frame" />
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-          <Field label="Frame ID" value={shortHash(frame.frame_id, 10, 6)} mono title={frame.frame_id} />
-          <Field label="Codec" value={frame.codec.toUpperCase()} mono />
-          <Field label="Type" value={frame.frame_type} mono />
-          <Field label="Dimensions" value={frame.width && frame.height ? `${frame.width}×${frame.height}` : "—"} mono />
-          <Field label="Payload" value={formatBytes(frame.payload_len)} mono />
-          <Field label="Deleted" value={frame.deleted ? "yes — recovered" : "no"} />
-        </dl>
-        <div className="mt-2 flex items-center gap-1.5">
-          <Badge variant={SOURCE_BADGE[frame.source]}>{frame.source}</Badge>
-          {frame.deleted && <Badge variant="recovered">recovered</Badge>}
+        <p className="text-base text-text">
+          Channel {frame.channel ?? "—"} · recorded {chosenReading?.iso ? formatTimecode(chosenReading.iso) : "time unknown"}
+        </p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className="flex items-center gap-1">
+            <Badge variant={SOURCE_BADGE[frame.source]}>{SOURCE_PLAIN_LABEL[frame.source] ?? frame.source}</Badge>
+            <InfoHint label={SOURCE_EXPLANATION[frame.source] ?? "How this frame's bytes were located on disk."} />
+          </span>
+          {frame.deleted && <Badge variant="recovered">Deleted, then recovered</Badge>}
         </div>
       </section>
 
-      {/* Four-clock stack */}
-      <section>
-        <SectionHeading icon={ScanEye} label="Clock stack" />
-        <ClockStack readings={readings} chosenKey={chosenKey} />
-      </section>
-
-      {/* Integrity */}
+      {/* Integrity — a trust signal, stays visible rather than collapsed. */}
       <section>
         <SectionHeading icon={Binary} label="Integrity" />
         {hexQuery.isLoading ? (
@@ -159,29 +157,43 @@ export function FrameInspector({ caseId, frameId }: { caseId: string; frameId: s
         )}
       </section>
 
-      {/* Provenance */}
-      <section>
-        <SectionHeading icon={PackageOpen} label="Provenance" />
-        {evidenceQuery.isLoading ? (
-          <Skeleton className="h-16 w-full" />
-        ) : evidenceQuery.data ? (
-          <dl className="grid grid-cols-1 gap-1.5">
-            <Field label="Evidence image" value={evidenceQuery.data.id} mono />
-            <Field label="Image SHA-256" value={shortHash(evidenceQuery.data.sha256)} mono title={evidenceQuery.data.sha256} />
-            <Field label="Acquired" value={formatTimecode(evidenceQuery.data.acquired_utc)} mono />
-            <Field
-              label="Header / payload offset"
-              value={`${frame.header_offset ?? "—"} / ${frame.payload_offset}`}
-              mono
-            />
-            {recordingQuery.data && (
-              <Field label="Recording" value={`${recordingQuery.data.id} (${recordingQuery.data.source})`} mono />
-            )}
+      {/* Why this time? — the four-clock stack, collapsed by default. A reader who trusts the
+          headline time never needs to open this; an examiner who wants to see the reasoning
+          (frame header vs. index vs. on-screen clock vs. normalised) can. */}
+      <TechnicalDetails
+        summary="Why this time? (clock stack)"
+        className="border-none bg-transparent [&>summary]:bg-card [&>summary]:border [&>summary]:border-line"
+      >
+        <ClockStack readings={readings} chosenKey={chosenKey} className="-mx-1" />
+      </TechnicalDetails>
+
+      {/* Technical details — raw frame/provenance fields an examiner needs, not a first read. */}
+      <TechnicalDetails summary="Technical details">
+        <div className="flex flex-col gap-3">
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+            <Field label="Frame ID" value={shortHash(frame.frame_id, 10, 6)} mono title={frame.frame_id} />
+            <Field label="Codec" value={frame.codec.toUpperCase()} mono />
+            <Field label="Type" value={frame.frame_type} mono />
+            <Field label="Dimensions" value={frame.width && frame.height ? `${frame.width}×${frame.height}` : "—"} mono />
+            <Field label="Payload size" value={formatBytes(frame.payload_len)} mono />
+            <Field label="Header / payload offset" value={`${frame.header_offset ?? "—"} / ${frame.payload_offset}`} mono />
           </dl>
-        ) : (
-          <p className="text-caption text-text-3">Evidence record unavailable.</p>
-        )}
-      </section>
+          {evidenceQuery.isLoading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : evidenceQuery.data ? (
+            <dl className="grid grid-cols-1 gap-1.5 border-t border-line pt-2">
+              <Field label="Evidence image" value={evidenceQuery.data.id} mono />
+              <Field label="Image SHA-256" value={shortHash(evidenceQuery.data.sha256)} mono title={evidenceQuery.data.sha256} />
+              <Field label="Acquired" value={formatTimecode(evidenceQuery.data.acquired_utc)} mono />
+              {recordingQuery.data && (
+                <Field label="Recording" value={`${recordingQuery.data.id} (${recordingQuery.data.source})`} mono />
+              )}
+            </dl>
+          ) : (
+            <p className="text-caption text-text-3">Evidence record unavailable.</p>
+          )}
+        </div>
+      </TechnicalDetails>
 
       {/* Actions */}
       <section className="mt-auto flex flex-col gap-1.5 border-t border-line pt-3">

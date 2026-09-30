@@ -18,6 +18,7 @@ import { QueryErrorState } from "@/components/shell/query-error-state";
 import { api } from "@/api/client";
 import { errorFromResponse } from "@/lib/api-error";
 import { formatBytes, formatDuration, formatTimecodeUs } from "@/lib/format";
+import { SOURCE_PLAIN_LABEL, SOURCE_EXPLANATION } from "@/lib/humanize";
 import { useUiStore } from "@/store/ui";
 import { cn } from "@/lib/utils";
 import type { components } from "@/api/schema.gen";
@@ -26,8 +27,6 @@ type Recording = components["schemas"]["Recording"];
 type ClockModel = components["schemas"]["ClockModel"];
 type SourceFilter = "all" | Recording["source"];
 type StatusFilter = "all" | "active" | "recovered";
-
-const SOURCE_LABEL: Record<Recording["source"], string> = { index: "index", carved: "carved", inferred: "inferred" };
 
 /** Applies a channel's clock model (piecewise offset) to a device-clock microsecond value. */
 function normalise(deviceUs: number, clock: ClockModel | undefined): number {
@@ -126,8 +125,8 @@ export function RecordingsScreen({ cid }: { cid: string }) {
         </ChipGroup>
         <ChipGroup label="Source">
           {(["all", "index", "carved", "inferred"] as SourceFilter[]).map((s) => (
-            <Chip key={s} active={source === s} onClick={() => setSource(s)}>
-              {s === "all" ? "All" : SOURCE_LABEL[s]}
+            <Chip key={s} active={source === s} onClick={() => setSource(s)} title={s === "all" ? undefined : SOURCE_EXPLANATION[s]}>
+              {s === "all" ? "All" : SOURCE_PLAIN_LABEL[s]}
             </Chip>
           ))}
         </ChipGroup>
@@ -201,7 +200,12 @@ export function RecordingsScreen({ cid }: { cid: string }) {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={r.source === "index" ? "neutral" : r.source === "carved" ? "recovered" : "ai"}>{SOURCE_LABEL[r.source]}</Badge>
+                      <Badge
+                        variant={r.source === "index" ? "neutral" : r.source === "carved" ? "recovered" : "ai"}
+                        title={SOURCE_EXPLANATION[r.source]}
+                      >
+                        {SOURCE_PLAIN_LABEL[r.source]}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       {r.deleted ? <Badge variant="recovered">recovered</Badge> : <Badge variant="ok">active</Badge>}
@@ -247,11 +251,22 @@ function ChipGroup({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function Chip({
+  active,
+  onClick,
+  children,
+  title,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  title?: string;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={title}
       className={cn(
         "focus-ring rounded-full border px-2 py-1 text-caption font-medium transition-colors duration-[var(--dur-fast)]",
         active

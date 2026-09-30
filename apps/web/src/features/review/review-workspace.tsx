@@ -8,6 +8,7 @@ import { QueryErrorState } from "@/components/shell/query-error-state";
 import { ReviewToolbar } from "./components/review-toolbar";
 import { InspectorSlot } from "./components/inspector-slot";
 import { SplitHandle } from "./components/split-handle";
+import { TimelineLegend } from "./components/timeline-legend";
 import { VideoGrid } from "./players/video-grid";
 import { useReviewShortcuts } from "./players/use-review-shortcuts";
 import { TimelineCanvas } from "./timeline/timeline-canvas";
@@ -121,8 +122,9 @@ export function ReviewWorkspace({ caseId }: { caseId: string }) {
           <VideoGrid channels={channels} boundsStartUs={boundsStartUs} boundsEndUs={boundsEndUs} />
         </div>
         <SplitHandle containerRef={containerRef} />
-        <div style={{ flexGrow: 100 - videoGridHeightPct, flexBasis: 0, minHeight: 220 }} className="flex min-h-0">
-          <TimelineCanvas channels={channels} markers={markers} />
+        <div style={{ flexGrow: 100 - videoGridHeightPct, flexBasis: 0, minHeight: 220 }} className="flex min-h-0 flex-col">
+          <TimelineLegend />
+          <TimelineCanvas channels={channels} markers={markers} className="flex-1" />
         </div>
       </div>
       <InspectorSlot caseId={caseId} frames={framesQuery.data ?? []} />

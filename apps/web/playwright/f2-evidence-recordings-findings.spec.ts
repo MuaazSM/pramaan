@@ -66,7 +66,7 @@ test.describe("F2 mock e2e", () => {
     await expect(page.getByText("15 of 60 recordings")).toBeVisible();
 
     // Status filter: Recovered only (4 of CH2's 15 slices overlap the 13h deletion window).
-    await page.getByRole("button", { name: "Recovered" }).click();
+    await page.getByRole("button", { name: "Recovered", exact: true }).click();
     await expect(page.getByText("4 of 60 recordings")).toBeVisible();
     await expect(page.getByText("recovered").first()).toBeVisible();
 
@@ -78,10 +78,16 @@ test.describe("F2 mock e2e", () => {
     await login(page);
     await page.goto(`/cases/${CASE_ID}/findings`);
 
-    await expect(page.getByText("Format deletion on channel 3")).toBeVisible();
-    await expect(page.getByText("admin", { exact: true })).toBeVisible();
-    await expect(page.getByText("214")).toBeVisible();
-    await expect(page.getByText(/hdd_format log event/)).toBeVisible();
+    // F7: the headline sentence leads, built from structured fields, not a bare "214" chip —
+    // see docs/progress/F7.md. Assert the plain-language headline and a humanized reason bullet.
+    await expect(page.getByText("Channel 3 was wiped by a disk format on", { exact: false })).toBeVisible();
+    await expect(page.getByText("admin", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("3.4 GB across 214 frames")).toBeVisible();
+    await expect(page.getByText("214 deleted frames were found and recovered on channel 3.", { exact: false })).toBeVisible();
+
+    // The raw machine string (offsets) is still reachable, one click away, behind Technical details.
+    await page.getByText("Raw reason data").click();
+    await expect(page.getByText(/spanning payload offsets/)).toBeVisible();
 
     await page.getByRole("link", { name: "Open evidence" }).click();
     await page.waitForURL(`**/cases/${CASE_ID}/evidence/${TIER_A_EVIDENCE_ID}`);
