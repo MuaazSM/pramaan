@@ -78,32 +78,97 @@ Scan throughput is reported per image as whole-job wall-clock time; it is not sc
 
 ## How it works
 
-```text
-            ┌───────────────────────────── apps/web (React) ─────────────────────────────┐
-            │ cases · evidence · recordings · findings · review · prove-it · reports ... │
-            └──────────────────────────────────┬──────────────────────────────────────────┘
-                                               │  REST + WebSocket (typed OpenAPI client)
-            ┌──────────────────────────────────▼──────────────────────────────────────────┐
-            │ apps/api (FastAPI)  auth · cases · evidence · jobs · frames · hex · clips  │
-            │                     reports · exports · custody · anchors · timeline · AI  │
-            └──────────────────────────────────┬──────────────────────────────────────────┘
-                                               │  job runner (inline or dramatiq + Redis)
- apps/worker pipeline (resumable, each stage cached by input hash):
-   hash_verify → fingerprint → parse_index → infer_layout → carve → frame_index
-               → logs → deletion_verdict → clips → timeline → motion
-                                               │
-  packages/core      read-only EvidenceReader, hashing, models, case DB, Parquet frame index, provenance
-  crates/scanner     Rust signature / Annex-B scanner (PyO3), with a byte-identical pure-Python fallback
-  packages/formats   fingerprints, HIKSIM / DHSIM / HWSIM parsers (+ .ksy specs)
-  packages/recovery  carvers, SPS clustering, clip builder, format inference, deletion verdicts
-  packages/logs      RATS / DHLG device-log parsers
-  packages/timeline  clock models, OSD reader (Paddle → Rapid → Tesseract → template matcher)
-  packages/analytics motion triage
-  packages/custody   Ed25519 hash chain, Merkle anchors
-  packages/reporting manifest, HTML → PDF (WeasyPrint, Chromium fallback), PAdES signing, BSA §63
-  packages/export    signed MP4 export and verification
-  packages/llm       guarded, budgeted Claude layer (fixture / Anthropic / local providers)
+### System overview
+
+```mermaid
+flowchart TB
+    subgraph WEB["apps/web · React 19 + TypeScript + Vite"]
+        UI["Cases · Evidence · Recordings · Findings<br/>Review · Prove it · Reports · Exports · Custody"]
+    end
+
+    subgraph API["apps/api · FastAPI"]
+        REST["REST routes<br/>auth · cases · evidence · jobs · frames · hex · clips<br/>reports · exports · custody · anchors · timeline · assistant"]
+        WS["WebSocket<br/>job progress events"]
+    end
+
+    UI -- "typed OpenAPI client" --> REST
+    WS -- "live progress" --> UI
+    REST -- "enqueue scan" --> RUNNER["Job runner<br/>inline, or dramatiq + Redis"]
+
+    subgraph PIPE["apps/worker pipeline · resumable, each stage cached by input hash"]
+        direction LR
+        S1["hash_verify"] --> S2["fingerprint"] --> S3["parse_index"] --> S4["infer_layout"] --> S5["carve"] --> S6["frame_index"]
+        S6 --> S7["logs"] --> S8["deletion_verdict"] --> S9["clips"] --> S10["timeline"] --> S11["motion"]
+    end
+
+    RUNNER --> S1
+    PIPE -- "stage events" --> WS
+
+    EVIDENCE[("Disk image<br/>opened read-only")] --> PIPE
+    PIPE --> CASE[("Case folder<br/>SQLite case DB · Parquet frame index<br/>clips · reports · exports · custody JSONL")]
+    REST <--> CASE
 ```
+
+### Which library does each job
+
+```mermaid
+flowchart LR
+    subgraph STAGES["Pipeline stages"]
+        direction TB
+        HV["hash_verify"]
+        FP["fingerprint · parse_index"]
+        IL["infer_layout"]
+        CV["carve · clips · deletion_verdict"]
+        LG["logs"]
+        FI["frame_index"]
+        TL["timeline"]
+        MO["motion"]
+    end
+
+    subgraph LIBS["Python / Rust libraries"]
+        direction TB
+        CORE["packages/core<br/>read-only EvidenceReader · hashing<br/>models · case DB · Parquet index · provenance"]
+        SCAN["crates/scanner<br/>Rust Annex-B / signature scanner<br/>+ byte-identical Python fallback"]
+        FMT["packages/formats<br/>fingerprints · HIKSIM / DHSIM / HWSIM parsers"]
+        REC["packages/recovery<br/>carvers · SPS clustering · clip builder<br/>format inference · deletion verdicts"]
+        LOGS["packages/logs<br/>RATS / DHLG log parsers"]
+        TIME["packages/timeline<br/>four-clock model · OSD reader"]
+        ANA["packages/analytics<br/>motion triage"]
+    end
+
+    HV --> CORE
+    FP --> FMT
+    FMT --> SCAN
+    IL --> REC
+    CV --> REC
+    LG --> LOGS
+    FI --> CORE
+    TL --> TIME
+    MO --> ANA
+    FMT & REC & LOGS --> CORE
+
+    subgraph OUT["Case outputs · served by apps/api"]
+        direction TB
+        RPT["packages/reporting<br/>manifest · signed PDF · BSA §63 certificate"]
+        EXP["packages/export<br/>signed MP4 export + verify"]
+        CUS["packages/custody<br/>Ed25519 hash chain · Merkle anchors"]
+        LLM["packages/llm<br/>guarded, budgeted assistant (optional)"]
+    end
+```
+
+| Library | Responsibility |
+| --- | --- |
+| `packages/core` | Read-only `EvidenceReader`, streaming SHA-256 + MD5, shared models, case database, Parquet frame index, provenance, content-hash IDs |
+| `crates/scanner` | Rust signature and Annex-B start-code scanner (PyO3), with a byte-identical pure-Python fallback |
+| `packages/formats` | Fingerprints and Tier A parsers for HIKSIM, DHSIM and HWSIM (`.ksy` specs kept alongside) |
+| `packages/recovery` | Vendor and generic carvers, SPS clustering, stream-copy clip builder, Tier B format inference, deletion verdicts |
+| `packages/logs` | Device log parsers (RATS, DHLG), including records carved from outside the log area |
+| `packages/timeline` | Four-clock model and OSD reader (PaddleOCR → RapidOCR → Tesseract → built-in template matcher) |
+| `packages/analytics` | Motion triage |
+| `packages/custody` | Ed25519 hash-chained audit log, JSONL mirror, Merkle anchors |
+| `packages/reporting` | Deterministic manifest, HTML → PDF (WeasyPrint, Chromium fallback), PAdES signing, BSA Section 63 certificate |
+| `packages/export` | Signed MP4 export (stream copy) and tamper verification |
+| `packages/llm` | Fixture / Anthropic / local providers behind a payload guard and budget meter |
 
 Each case lives in its own folder under the data directory: a SQLite case database, Parquet frame indexes, derived artefacts (thumbnails, clips, reports, exports) with provenance, and a JSONL mirror of the custody chain.
 
