@@ -1,22 +1,27 @@
-/** /cases/$cid/review — Review workspace (hero screen). Designed placeholder for this wave. */
+/**
+ * /cases/$cid/review — Review workspace (hero screen).
+ * Primary action: play / jump to time.
+ * Reference products studied: Frame.io (player chrome, frame-accurate scrubbing), DaVinci
+ * Resolve (multi-track synced timeline, zoomable ruler, track headers), Grafana (dense
+ * time-series brushing for the motion strip).
+ */
 import { createFileRoute } from "@tanstack/react-router";
-import { PlaySquare } from "lucide-react";
-import { PlaceholderScreen } from "@/components/shell/placeholder-screen";
+import { ScreenShell } from "@/components/shell/screen-shell";
+import { ReviewWorkspace } from "@/features/review/review-workspace";
 
 export const Route = createFileRoute("/_app/cases/$cid/review")({
-  component: ReviewPlaceholder,
+  component: ReviewRoute,
 });
 
-function ReviewPlaceholder() {
-    const { cid } = Route.useParams();
-    return (
-      <PlaceholderScreen
-        segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Review" }]}
-        caseId={cid}
-        icon={PlaySquare}
-        title="Review workspace"
-        description="Multi-camera synced timeline, 1/4/9 video grid, frame inspector with the clock stack and Prove it. The most-built screen of Wave 3 — Frame.io and DaVinci Resolve are the references."
-        owner="WEB (Wave 3)"
-      />
-    );
+function ReviewRoute() {
+  const { cid } = Route.useParams();
+  return (
+    <ScreenShell
+      segments={[{ label: "Cases", to: "/cases" }, { label: cid, to: `/cases/${cid}` }, { label: "Review" }]}
+      caseId={cid}
+      showCustodySeal={true}
+    >
+      <ReviewWorkspace caseId={cid} />
+    </ScreenShell>
+  );
 }
