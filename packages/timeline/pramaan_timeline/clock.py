@@ -126,18 +126,63 @@ def offset_for_device_ts(segments: Sequence[ClockSegment], device_ts_us: int) ->
     ``[from_device_us, to_device_us)`` ranges. Falls back to the nearest
     segment if ``device_ts_us`` falls outside all of them (e.g. a frame
     slightly before the earliest known boundary).
+
+    **Backward clock-set ambiguity.** A "clock set back" jump (``new_ts_us
+    < old_ts_us``) makes the post-jump segment's open-ended range
+    (``[new_ts_us, +inf)``) numerically overlap the pre-jump segment's
+    open-ended range (``(-inf, old_ts_us)``) in the window
+    ``[new_ts_us, old_ts_us)`` — the device re-displays a range of values
+    it already showed before the jump, so more than one segment can
+    genuinely contain ``device_ts_us``. This function has no chronological
+    context (just one raw value), so it cannot resolve this the way
+    :func:`~pramaan_timeline.clock.normalise_frame_table`'s
+    ``_chronological_segment_offsets`` does (walking a channel's frames in
+    on-disk order); instead it picks the *matching* segment whose nearest
+    **finite** boundary is closest to ``device_ts_us``. Every real segment
+    (other than the very first/last, which are genuinely open-ended at the
+    true start/end of the device's whole timeline) is only ever
+    open-ended on the far side of the specific transition it was created
+    from — a value close to one specific transition is far more likely to
+    belong to that transition's segment than to some other segment's
+    unrelated, merely-permissive open end. Verified against
+    docs/progress/A2.md's ``hiksim_clockchange`` scenario: this alone
+    turns a 50% (600/1200) misclassification (every caller that queries
+    ``ClockModel.segments`` directly with a raw device timestamp, e.g.
+    ``tools/validate/validate.py``, previously got "first segment in the
+    oldest-first list whose range contains this value", which always
+    matched the wide-open first segment) into 100% correct.
     """
     if not segments:
         raise ValueError("no segments to look up an offset in")
-    for seg in segments:
-        lo = seg.from_device_us if seg.from_device_us is not None else -math.inf
-        hi = seg.to_device_us if seg.to_device_us is not None else math.inf
-        if lo <= device_ts_us < hi:
-            return seg.offset_us
+    matches = [
+        seg
+        for seg in segments
+        if (seg.from_device_us if seg.from_device_us is not None else -math.inf)
+        <= device_ts_us
+        < (seg.to_device_us if seg.to_device_us is not None else math.inf)
+    ]
+    if len(matches) == 1:
+        return matches[0].offset_us
+    if len(matches) > 1:
+        return min(matches, key=lambda seg: _nearest_boundary_distance(seg, device_ts_us)).offset_us
     first, last = segments[0], segments[-1]
     if first.from_device_us is not None and device_ts_us < first.from_device_us:
         return first.offset_us
     return last.offset_us
+
+
+def _nearest_boundary_distance(segment: ClockSegment, device_ts_us: int) -> float:
+    """Distance from ``device_ts_us`` to ``segment``'s nearest finite
+    boundary (``math.inf`` if the segment is open on both sides — never
+    true for a real multi-segment model, since only the outermost segment
+    of the whole reconstructed timeline is unbounded on its one true open
+    side, and it always has its other boundary finite)."""
+    distances = [
+        abs(device_ts_us - bound)
+        for bound in (segment.from_device_us, segment.to_device_us)
+        if bound is not None
+    ]
+    return min(distances) if distances else math.inf
 
 
 # --------------------------------------------------------------------------

@@ -66,6 +66,22 @@ _MIN_ABS_DIFF_SCORE = 0.05
 #: small; see docs/progress/A2.md "Decisions").
 _CARVED_RUN_GAP_US = 2_000_000
 
+#: Frame types that actually decode to a picture ffmpeg can score. Every
+#: other type this pipeline indexes (``SPS``/``PPS``/``VPS``/``SEI``,
+#: ``"other"``) carries no image of its own — HWSIM headers every NAL
+#: individually (FIX-5: one ``FrameRef`` per physical NAL, unlike HIKSIM/
+#: DHSIM's one-``FrameRef``-per-access-unit convention, whose slice payload
+#: already has its access unit's SPS/PPS bundled inside it) — but a slice
+#: NAL still can't be decoded on its own without the parameter sets that
+#: precede it in the elementary stream. See ``_build_decode_groups``/
+#: ``_decode_gray_sequence``.
+_SLICE_FRAME_TYPES = ("I", "P")
+#: Non-picture NAL types kept in a decode group's *byte stream* (so ffmpeg
+#: has the SPS/PPS/SEI it needs) but never scored/timestamped as a motion
+#: sample themselves.
+_PARAM_SET_FRAME_TYPES = ("SPS", "PPS", "VPS", "SEI")
+_DECODABLE_FRAME_TYPES = _SLICE_FRAME_TYPES + _PARAM_SET_FRAME_TYPES
+
 
 def _skip(stage: str, ctx: StageContext, reason: str) -> StageResult:
     return StageResult(
@@ -260,27 +276,48 @@ def _segments_for_group(
 
 def _carved_decode_runs(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """Split a channel's recording-id-less (carved) frames into decodable
-    runs: a fresh run starts at each device-time gap bigger than
-    :data:`_CARVED_RUN_GAP_US`, and any leading run of ``P`` frames before
-    the first ``I`` frame is dropped (an Annex-B stream can't be decoded
-    without a keyframe to start from — that leading footage's own reference
-    frame was physically overwritten, per docs/01-FORENSIC-CORE.md §4.7;
-    CLAUDE.md rule 1 — never fabricate a frame that isn't there).
+    runs: a fresh run starts at each device-time gap (measured on ``I``/``P``
+    slice rows only) bigger than :data:`_CARVED_RUN_GAP_US`, and any leading
+    access unit whose slice is ``P`` (not ``I``) before the run's first ``I``
+    is dropped — an Annex-B stream can't be decoded without a keyframe to
+    start from — that leading footage's own reference frame was physically
+    overwritten, per docs/01-FORENSIC-CORE.md §4.7; CLAUDE.md rule 1 — never
+    fabricate a frame that isn't there.
+
+    Operates access-unit-at-a-time (not row-at-a-time): a dropped leading
+    ``P`` access unit takes its own leading ``SPS``/``PPS``/``SEI`` rows
+    (:data:`_PARAM_SET_FRAME_TYPES`, present as separate ``FrameRef``s only
+    for HWSIM — FIX-5) down with it, and a *kept* access unit's leading
+    parameter-set rows are kept too, so the run's byte stream (built by
+    :func:`_decode_gray_sequence` from every row in the run, in
+    ``payload_offset`` order) always has the SPS/PPS immediately before the
+    slice that needs them.
     """
     ordered = sorted(rows, key=lambda r: r["payload_offset"])
     runs: list[list[dict[str, Any]]] = []
     current: list[dict[str, Any]] = []
+    pending_non_slice: list[dict[str, Any]] = []
+    started = False
     last_ts: int | None = None
     for row in ordered:
+        if row["frame_type"] not in _SLICE_FRAME_TYPES:
+            pending_non_slice.append(row)
+            continue
         ts = _timestamp(row)
         if last_ts is not None and ts is not None and abs(ts - last_ts) > _CARVED_RUN_GAP_US:
             if current:
                 runs.append(current)
             current = []
-        if not current and row["frame_type"] != "I":
-            if ts is not None:
-                last_ts = ts
-            continue
+            started = False
+        if not started:
+            if row["frame_type"] != "I":
+                pending_non_slice = []
+                if ts is not None:
+                    last_ts = ts
+                continue
+            started = True
+        current.extend(pending_non_slice)
+        pending_non_slice = []
         current.append(row)
         if ts is not None:
             last_ts = ts
@@ -294,12 +331,20 @@ def _build_decode_groups(
 ) -> dict[tuple[int, str], list[dict[str, Any]]]:
     """``(channel, group_key) -> frames`` for every decodable run: frames
     with a ``recording_id`` (live index, grouped by it) plus carved frames
-    (grouped via :func:`_carved_decode_runs`)."""
+    (grouped via :func:`_carved_decode_runs`).
+
+    Includes parameter-set rows (:data:`_PARAM_SET_FRAME_TYPES`) alongside
+    slice rows — a group's rows become the ffmpeg *decode input* byte
+    stream (:func:`_decode_gray_sequence`), which needs the SPS/PPS/SEI
+    immediately preceding a slice to decode it at all (see FIX-5;
+    ``motion_stage`` itself later restricts *scoring* to slice rows only,
+    per this task's brief: "exclude non-slice frames from motion
+    scoring")."""
     groups: dict[tuple[int, str], list[dict[str, Any]]] = {}
     carved_by_channel: dict[int, list[dict[str, Any]]] = {}
     for row in all_rows:
         channel = row["channel"]
-        if channel is None or row["frame_type"] not in ("I", "P"):
+        if channel is None or row["frame_type"] not in _DECODABLE_FRAME_TYPES:
             continue
         if row["recording_id"] is not None:
             groups.setdefault((channel, row["recording_id"]), []).append(row)
@@ -330,13 +375,28 @@ def motion_stage(ctx: StageContext) -> StageResult:
     reader = EvidenceReader.open(ctx.evidence_path)
     try:
         for (channel, _recording_id), rows in sorted(groups.items(), key=lambda kv: kv[0]):
+            # ``ordered`` (every row in the group, including any leading
+            # SPS/PPS/SEI — see ``_build_decode_groups``) is the decode
+            # *input*: a valid Annex-B byte stream needs its parameter sets
+            # in front of the slice(s) that use them. Only the slice
+            # (I/P) rows actually decode to a scoreable picture — ffmpeg
+            # emits exactly one output frame per slice NAL, none for
+            # SPS/PPS/SEI — so scoring/timestamps are matched against
+            # ``scorable_rows`` alone (this task's brief: "exclude
+            # non-slice frames from motion scoring"). For HIKSIM/DHSIM
+            # (whose keyframe payload already bundles its SPS/PPS inline,
+            # never a separate FrameRef) ``scorable_rows == ordered``, a
+            # no-op.
             ordered = sorted(rows, key=lambda r: r["payload_offset"])
+            scorable_rows = [r for r in ordered if r["frame_type"] in _SLICE_FRAME_TYPES]
+            if not scorable_rows:
+                continue
             frames = _decode_gray_sequence(reader, ordered)
             if frames is None:
                 continue
-            n = min(frames.shape[0], len(ordered))
+            n = min(frames.shape[0], len(scorable_rows))
             frames = frames[:n]
-            used_rows = ordered[:n]
+            used_rows = scorable_rows[:n]
             scores = frame_diff_scores(frames)
             window = _estimate_window_frames([_timestamp(r) for r in used_rows])
             z = robust_zscore(scores, window)
