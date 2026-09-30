@@ -192,15 +192,33 @@ def ffprobe_playable(data: bytes) -> tuple[bool, str]:
 
 
 def confirm_inferred_layout_if_present(
-    client: httpx.Client, evidence_id: str
+    client: httpx.Client, case_id: str, evidence_id: str
 ) -> tuple[dict[str, Any] | None, str | None]:
     """If ``evidence_id`` has an inferred (Tier B) layout, confirm it via
-    the real API as the logged-in examiner (``POST
-    /inferred-layouts/{lid}/confirm``) — the same workflow step an examiner
-    performs in the UI, and the same one ``tools/demo/demo.py``'s
+    the real API as the logged-in examiner — the same workflow step an
+    examiner performs in the UI, and the same one ``tools/demo/demo.py``'s
     ``try_confirm_inferred_layout`` performs for ``xsim_unknown``.
 
-    Task FIX-12 made this route synchronous and made it re-run every
+    Task FIX-15: uses the case-scoped
+    ``GET /cases/{cid}/evidence/{eid}/inferred-layout`` /
+    ``POST /cases/{cid}/evidence/{eid}/inferred-layout/confirm`` routes,
+    not the global ``/evidence/{eid}/inferred-layout`` /
+    ``/inferred-layouts/{lid}/confirm`` ones. Evidence ids (and inferred
+    -layout ids) are content-derived, so this harness's own determinism
+    check registers byte-identical footage into a *second* case
+    (``VAL-DET-<name>``) with the same ``evidence_id``/layout id as the
+    primary case. The global routes resolve a bare ``eid``/``lid`` via a
+    cross-case scan that returns whichever case is found first
+    (``apps/api/pramaan_api/real/store.py::_find_case_for_evidence``,
+    ``pipeline_store.get_inferred_layout_by_id``) — so confirming the
+    primary case would make the determinism copy's own, independently
+    -stored layout look already-confirmed without its own downstream
+    reindex ever running, which is exactly the bug this task fixes (see
+    docs/progress/FIX-15.md). The case-scoped routes resolve
+    ``(case_id, evidence_id)`` directly, so each case's confirm is
+    genuinely independent.
+
+    Task FIX-12 made confirming synchronous and made it re-run every
     downstream stage that depends on the confirmed layout's ``recordings``
     (``frame_index``, ``logs``, ``deletion_verdict``, ``clips``,
     ``timeline``, ``motion``) inline before the response returns — so by
@@ -224,7 +242,7 @@ def confirm_inferred_layout_if_present(
     mirrors ``demo.py``'s best-effort treatment so one bad confirm can't
     abort the whole image's scoring; the caller records it as a run error.
     """
-    resp = client.get(f"/api/evidence/{evidence_id}/inferred-layout")
+    resp = client.get(f"/api/cases/{case_id}/evidence/{evidence_id}/inferred-layout")
     if resp.status_code == 404:
         return None, None
     if resp.status_code >= 400:
@@ -232,14 +250,15 @@ def confirm_inferred_layout_if_present(
     layout = resp.json()
     if layout.get("confirmed_by") is not None:
         return layout, None
-    lid = layout.get("id")
-    if not lid:
-        return None, f"inferred-layout response had no id: {layout}"
     confirm_resp = client.post(
-        f"/api/inferred-layouts/{lid}/confirm", headers=api.csrf_headers(client)
+        f"/api/cases/{case_id}/evidence/{evidence_id}/inferred-layout/confirm",
+        headers=api.csrf_headers(client),
     )
     if confirm_resp.status_code >= 400:
-        return None, f"POST confirm ({lid}): {confirm_resp.status_code} {confirm_resp.text[:200]}"
+        return None, (
+            f"POST confirm ({case_id}/{evidence_id}): "
+            f"{confirm_resp.status_code} {confirm_resp.text[:200]}"
+        )
     return confirm_resp.json(), None
 
 
@@ -343,7 +362,7 @@ def process_image(
     # this must run before any of those queries, exactly once per image,
     # as an examiner would in the real workflow.
     _layout_after_confirm, _confirm_error = confirm_inferred_layout_if_present(
-        client, evidence_id
+        client, case_id, evidence_id
     )
     if _confirm_error is not None:
         result.errors.append(f"inferred-layout confirm failed: {_confirm_error}")
@@ -747,7 +766,9 @@ def process_image(
     hidden_layout = truth.get("hidden_layout")
     if hidden_layout is not None:
         try:
-            layout = api.get_json(client, f"/api/evidence/{evidence_id}/inferred-layout")
+            layout = api.get_json(
+                client, f"/api/cases/{case_id}/evidence/{evidence_id}/inferred-layout"
+            )
         except httpx.HTTPStatusError as exc:
             layout = None
             result.errors.append(f"inferred-layout query failed: {exc}")
@@ -906,7 +927,7 @@ def process_image(
         # (empty recordings/deletions) one and every content-match check
         # below would spuriously fail for xsim_format/xsim_unknown.
         _det_layout_after_confirm, _det_confirm_error = confirm_inferred_layout_if_present(
-            client, det_evidence_id
+            client, det_case_id, det_evidence_id
         )
         if _det_confirm_error is not None:
             result.errors.append(
@@ -967,7 +988,7 @@ def process_image(
         if hidden_layout is not None:
             try:
                 det_layout = api.get_json(
-                    client, f"/api/evidence/{det_evidence_id}/inferred-layout"
+                    client, f"/api/cases/{det_case_id}/evidence/{det_evidence_id}/inferred-layout"
                 )
             except httpx.HTTPStatusError:
                 det_layout = None
@@ -1213,14 +1234,18 @@ def write_markdown(
     )
     lines.append("")
 
-    lines.append("## Methodology notes / equivalence rules (tasks FIX-11, FIX-14)")
+    lines.append("## Methodology notes / equivalence rules (tasks FIX-11, FIX-14, FIX-15)")
     lines.append("")
     lines.append(
-        "- **Tier B (inferred-layout) images are scored after examiner confirmation** (task "
-        "FIX-14). For every image whose fingerprint yields an inferred layout "
-        "(`GET /api/evidence/{eid}/inferred-layout` returns one — in this corpus, `xsim_format` "
-        "and `xsim_unknown`), the harness confirms it via `POST /inferred-layouts/{lid}/confirm` "
-        "as the logged-in examiner, the same workflow step an examiner performs in the UI and "
+        "- **Tier B (inferred-layout) images are scored after examiner confirmation** (tasks "
+        "FIX-14, FIX-15). For every image whose fingerprint yields an inferred layout "
+        "(`GET /api/cases/{cid}/evidence/{eid}/inferred-layout` returns one — in this corpus, "
+        "`xsim_format` and `xsim_unknown`), the harness confirms it via the case-scoped "
+        "`POST /cases/{cid}/evidence/{eid}/inferred-layout/confirm` (task FIX-15; not the global "
+        "`/inferred-layouts/{lid}/confirm`, which resolves a content-derived layout id via a "
+        "cross-case scan and so cannot distinguish the primary case from the determinism check's "
+        "own second case below) as the logged-in examiner, the same workflow step an examiner "
+        "performs in the UI and "
         "the same one `tools/demo/demo.py` performs for `xsim_unknown`, immediately after the "
         "automatic `/scan` job completes and before any other metric is queried. Task FIX-12 "
         "made that confirm route synchronous and made it re-run every downstream stage that "

@@ -781,3 +781,128 @@ def test_confirm_reruns_every_downstream_stage_once_via_fake_registered_stages(
     assert calls == {"logs": 1, "deletion_verdict": 1, "timeline": 1, "motion": 1}, calls
     deletions_after_second = real_client.get(f"/api/cases/{case['id']}/deletions").json()
     assert len(deletions_after_second) == 1
+
+
+def test_case_scoped_inferred_layout_confirm_is_independent_per_case(
+    real_client: TestClient,
+    tmp_path: Path,
+    real_evidence_dir: Path,
+    real_settings: Settings,
+) -> None:
+    """Task FIX-15: evidence ids (and inferred-layout ids) are content-
+    derived, so registering byte-identical footage into two different
+    cases yields the *same* ``image_id``/``layout_id`` in both. Before
+    this fix, ``GET /evidence/{eid}/inferred-layout`` and
+    ``POST /inferred-layouts/{lid}/confirm`` both resolved to whichever
+    case happened to be found first (``get_inferred_layout_by_id``'s
+    cross-case scan), so confirming in case A made case B's own,
+    independently-stored inferred layout look already-confirmed without
+    case B's own downstream reindex (``parse_inferred_layout`` ->
+    ``frame_index`` -> ... -> ``clips``) ever running — exactly the
+    determinism-check failure this task fixes (``just validate``'s
+    determinism copy of a Tier B image never gets its own recordings).
+
+    Uses the new case-scoped routes
+    (``GET /cases/{cid}/evidence/{eid}/inferred-layout`` and
+    ``POST /cases/{cid}/evidence/{eid}/inferred-layout/confirm``) end to
+    end: confirming in case A must leave case B's own copy unconfirmed;
+    confirming case B afterwards must then yield identical recordings in
+    both cases (byte-identical input -> byte-identical derived output,
+    CLAUDE.md rule 5).
+    """
+    from pramaan_api.real import appdb
+
+    case_a = _create_case(real_client, "CR-FIX15-CASE-A")
+    case_b = _create_case(real_client, "CR-FIX15-CASE-B")
+
+    image_path_a = real_evidence_dir / "xsim_fix15_a.img"
+    frame_specs = _build_fake_image(tmp_path, image_path_a)
+    image_path_b = real_evidence_dir / "xsim_fix15_b.img"
+    image_path_b.write_bytes(image_path_a.read_bytes())
+
+    ev_a = real_client.post(
+        f"/api/cases/{case_a['id']}/evidence",
+        json={
+            "path": str(image_path_a),
+            "label": "fake xsim disk (case A)",
+            "intake": _intake_body(),
+        },
+    )
+    assert ev_a.status_code == 201, ev_a.text
+    image_a = ev_a.json()
+
+    ev_b = real_client.post(
+        f"/api/cases/{case_b['id']}/evidence",
+        json={
+            "path": str(image_path_b),
+            "label": "fake xsim disk (case B)",
+            "intake": _intake_body(),
+        },
+    )
+    assert ev_b.status_code == 201, ev_b.text
+    image_b = ev_b.json()
+
+    # Byte-identical evidence -> identical content-derived image_id, the
+    # whole premise of this bug.
+    assert image_a["id"] == image_b["id"]
+    image_id = image_a["id"]
+
+    _recording, frames = _finalise(image_id, frame_specs)
+
+    class _FakeInferredParser:
+        def iter_frames(self, reader: Any, image_id: str) -> list[FrameRef]:
+            return list(frames)
+
+    registry.register_inferred_parser_factory(lambda layout: _FakeInferredParser())
+
+    # Same content-derived layout_id in both cases; each case's own
+    # `inferred_layouts` row lives in its own case.db (never shared
+    # storage), inserted independently here the same way the other
+    # confirm tests above seed a layout without a real infer_layout run.
+    layout_id = content_id("layout", {"image_id": image_id})
+    for cid in (case_a["id"], case_b["id"]):
+        guarded = appdb.case_db(real_settings.data_dir, cid)
+        with guarded.lock:
+            guarded.conn.execute(
+                "INSERT INTO inferred_layouts (id, image_id, header_len, magic, fields, codec,"
+                " confirmed_by) VALUES (?,?,?,?,?,?,?)",
+                (layout_id, image_id, 8, None, "[]", "h264", None),
+            )
+            guarded.conn.commit()
+
+    # Confirm in case A only.
+    confirm_a = real_client.post(
+        f"/api/cases/{case_a['id']}/evidence/{image_id}/inferred-layout/confirm"
+    )
+    assert confirm_a.status_code == 200, confirm_a.text
+    assert confirm_a.json()["confirmed_by"] == "examiner"
+
+    # Case B's own copy of the *same* layout_id must still be unconfirmed
+    # — the precise bug this task fixes.
+    layout_b_before = real_client.get(
+        f"/api/cases/{case_b['id']}/evidence/{image_id}/inferred-layout"
+    )
+    assert layout_b_before.status_code == 200, layout_b_before.text
+    assert layout_b_before.json()["confirmed_by"] is None
+
+    recordings_a = real_client.get(f"/api/cases/{case_a['id']}/recordings").json()
+    assert len(recordings_a) > 0
+    recordings_b_before = real_client.get(f"/api/cases/{case_b['id']}/recordings").json()
+    assert recordings_b_before == []
+
+    # Now confirm case B too — its own downstream reindex must actually
+    # run (not silently no-op because the global route thought this
+    # layout_id was already confirmed).
+    confirm_b = real_client.post(
+        f"/api/cases/{case_b['id']}/evidence/{image_id}/inferred-layout/confirm"
+    )
+    assert confirm_b.status_code == 200, confirm_b.text
+    assert confirm_b.json()["confirmed_by"] == "examiner"
+
+    recordings_b_after = real_client.get(f"/api/cases/{case_b['id']}/recordings").json()
+    assert {r["id"] for r in recordings_b_after} == {r["id"] for r in recordings_a}
+    assert len(recordings_b_after) == len(recordings_a)
+
+    deletions_a = real_client.get(f"/api/cases/{case_a['id']}/deletions").json()
+    deletions_b = real_client.get(f"/api/cases/{case_b['id']}/deletions").json()
+    assert deletions_a == deletions_b

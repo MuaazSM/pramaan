@@ -270,3 +270,83 @@ def confirm_inferred_layout(
     if layout is None:
         raise not_found("inferred_layout", lid)
     return layout
+
+
+@router.get(
+    "/cases/{cid}/evidence/{eid}/inferred-layout",
+    response_model=InferredLayout,
+)
+def get_inferred_layout_in_case(
+    cid: str,
+    eid: str,
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> InferredLayout:
+    """Case-scoped counterpart to ``GET /evidence/{eid}/inferred-layout``
+    (task FIX-15) — see ``verify_evidence_in_case`` above for why the
+    global route (no ``{cid}`` in its path) is inherently ambiguous once
+    the same content-derived ``eid`` is registered into more than one
+    case. This route resolves ``eid``'s inferred layout only within
+    ``cid``, so each case's own copy (and its own independent
+    ``confirmed_by`` state) is returned rather than whichever case
+    happens to sort first.
+    """
+    if settings.stub_mode:
+        if store.get_case(cid) is None:
+            raise not_found("case", cid)
+        if store.get_evidence(eid) is None:
+            raise not_found("evidence", eid)
+        layout = store.get_inferred_layout_for_evidence(eid)
+    else:
+        if real_store.get_case(settings.data_dir, cid) is None:
+            raise not_found("case", cid)
+        if real_store.get_evidence_in_case(settings.data_dir, cid, eid) is None:
+            raise not_found("evidence", eid)
+        layout = real_pipeline.get_inferred_layout_in_case(settings.data_dir, cid, eid)
+    if layout is None:
+        raise not_found("inferred_layout", eid)
+    return layout
+
+
+@router.post(
+    "/cases/{cid}/evidence/{eid}/inferred-layout/confirm",
+    response_model=InferredLayout,
+)
+def confirm_inferred_layout_in_case(
+    cid: str,
+    eid: str,
+    user: User = Depends(require_examiner_or_admin),
+    settings: Settings = Depends(get_settings),
+    _csrf: None = Depends(require_csrf),
+) -> InferredLayout:
+    """Case-scoped counterpart to ``POST /inferred-layouts/{lid}/confirm``
+    (task FIX-15). The global route resolves a layout id via a cross-case
+    scan (``pipeline_store.get_inferred_layout_by_id``) — since a layout's
+    own id is as content-derived as ``eid`` itself, confirming in one case
+    a Tier B image registered into two cases always resolves to the
+    *first* case that has it, so the determinism harness's second,
+    independent case is silently seen as "already confirmed" and never
+    actually runs its own downstream reindex. This route resolves
+    ``(cid, eid)`` directly instead, so each case's confirm is genuinely
+    independent.
+    """
+    if settings.stub_mode:
+        if store.get_case(cid) is None:
+            raise not_found("case", cid)
+        if store.get_evidence(eid) is None:
+            raise not_found("evidence", eid)
+        existing = store.get_inferred_layout_for_evidence(eid)
+        layout = (
+            store.confirm_inferred_layout(existing.id, user.username)
+            if existing is not None
+            else None
+        )
+    else:
+        if real_store.get_case(settings.data_dir, cid) is None:
+            raise not_found("case", cid)
+        if real_store.get_evidence_in_case(settings.data_dir, cid, eid) is None:
+            raise not_found("evidence", eid)
+        layout = real_pipeline.confirm_inferred_layout_in_case(settings.data_dir, user, cid, eid)
+    if layout is None:
+        raise not_found("inferred_layout", eid)
+    return layout

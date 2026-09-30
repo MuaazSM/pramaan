@@ -3527,6 +3527,110 @@
         ]
       }
     },
+    "/api/cases/{cid}/evidence/{eid}/inferred-layout": {
+      "get": {
+        "description": "Case-scoped counterpart to ``GET /evidence/{eid}/inferred-layout``\n(task FIX-15) \u2014 see ``verify_evidence_in_case`` above for why the\nglobal route (no ``{cid}`` in its path) is inherently ambiguous once\nthe same content-derived ``eid`` is registered into more than one\ncase. This route resolves ``eid``'s inferred layout only within\n``cid``, so each case's own copy (and its own independent\n``confirmed_by`` state) is returned rather than whichever case\nhappens to sort first.",
+        "operationId": "get_inferred_layout_in_case_api_cases__cid__evidence__eid__inferred_layout_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferredLayout"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Inferred Layout In Case",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/cases/{cid}/evidence/{eid}/inferred-layout/confirm": {
+      "post": {
+        "description": "Case-scoped counterpart to ``POST /inferred-layouts/{lid}/confirm``\n(task FIX-15). The global route resolves a layout id via a cross-case\nscan (``pipeline_store.get_inferred_layout_by_id``) \u2014 since a layout's\nown id is as content-derived as ``eid`` itself, confirming in one case\na Tier B image registered into two cases always resolves to the\n*first* case that has it, so the determinism harness's second,\nindependent case is silently seen as \"already confirmed\" and never\nactually runs its own downstream reindex. This route resolves\n``(cid, eid)`` directly instead, so each case's confirm is genuinely\nindependent.",
+        "operationId": "confirm_inferred_layout_in_case_api_cases__cid__evidence__eid__inferred_layout_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferredLayout"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Inferred Layout In Case",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
     "/api/cases/{cid}/evidence/{eid}/scan": {
       "post": {
         "description": "Case-scoped counterpart to ``POST /evidence/{eid}/scan`` \u2014 see\n``verify_evidence_in_case`` above for why (task FIX-4).",

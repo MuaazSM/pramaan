@@ -408,6 +408,27 @@ def get_inferred_layout(data_dir: str, evidence_id: str) -> InferredLayout | Non
     return _row_to_inferred_layout(row) if row is not None else None
 
 
+def get_inferred_layout_in_case(
+    data_dir: str, case_id: str, evidence_id: str
+) -> InferredLayout | None:
+    """``evidence_id``'s inferred layout looked up *only* within
+    ``case_id``'s own ``case.db`` (task FIX-15) — the case-scoped
+    counterpart to :func:`get_inferred_layout`, for a caller (a
+    ``/cases/{cid}/...`` route) that already knows which case it's
+    acting on. Unlike :func:`get_inferred_layout`, this never routes
+    through :func:`~pramaan_api.real.store.get_evidence_with_case`'s
+    first-sorted-case-wins cross-case scan, so registering identical
+    evidence bytes into two different cases (same content-derived
+    ``evidence_id``/layout id) correctly returns *this* case's own row,
+    including its own independent ``confirmed_by`` state.
+    """
+    conn = appdb.case_db(data_dir, case_id).conn
+    row = conn.execute(
+        "SELECT * FROM inferred_layouts WHERE image_id = ?", (evidence_id,)
+    ).fetchone()
+    return _row_to_inferred_layout(row) if row is not None else None
+
+
 def get_inferred_layout_by_id(data_dir: str, layout_id: str) -> tuple[str, InferredLayout] | None:
     """``(case_id, InferredLayout)`` for ``layout_id``, scanning every case
     the same way :func:`get_frame_with_case` does — an inferred-layout id
@@ -469,6 +490,34 @@ def confirm_inferred_layout(data_dir: str, actor: User, layout_id: str) -> Infer
     if found is None:
         return None
     case_id, layout = found
+    return _confirm_layout(data_dir, actor, case_id, layout)
+
+
+def confirm_inferred_layout_in_case(
+    data_dir: str, actor: User, case_id: str, evidence_id: str
+) -> InferredLayout | None:
+    """Case-scoped counterpart to :func:`confirm_inferred_layout` (task
+    FIX-15): resolves the layout via ``(case_id, evidence_id)`` using
+    :func:`get_inferred_layout_in_case` instead of
+    :func:`get_inferred_layout_by_id`'s cross-case-by-layout-id scan, so
+    confirming in a case whose copy of a content-derived ``evidence_id``
+    (and therefore the same inferred ``layout.id``) is unconfirmed always
+    confirms *that* case's own row — even when another case already
+    confirmed its own, independently-stored copy of the identical layout.
+    """
+    layout = get_inferred_layout_in_case(data_dir, case_id, evidence_id)
+    if layout is None:
+        return None
+    return _confirm_layout(data_dir, actor, case_id, layout)
+
+
+def _confirm_layout(
+    data_dir: str, actor: User, case_id: str, layout: InferredLayout
+) -> InferredLayout:
+    """Shared confirm body for :func:`confirm_inferred_layout` and
+    :func:`confirm_inferred_layout_in_case` (task FIX-15): both resolve
+    ``(case_id, layout)`` by different, equally case-scoped means, then
+    share this one audited confirm + downstream-reindex implementation."""
     if layout.confirmed_by is not None:
         real_store.append_audit(
             data_dir,
@@ -477,11 +526,11 @@ def confirm_inferred_layout(data_dir: str, actor: User, layout_id: str) -> Infer
             role=actor.role,
             action="layout.confirm_noop",
             object_type="inferred_layout",
-            object_id=layout_id,
+            object_id=layout.id,
             details={"image_id": layout.image_id, "already_confirmed_by": layout.confirmed_by},
         )
         return layout
-    updated = set_inferred_layout_confirmed_by(data_dir, case_id, layout_id, actor.username)
+    updated = set_inferred_layout_confirmed_by(data_dir, case_id, layout.id, actor.username)
     real_store.append_audit(
         data_dir,
         case_id,
@@ -489,7 +538,7 @@ def confirm_inferred_layout(data_dir: str, actor: User, layout_id: str) -> Infer
         role=actor.role,
         action="layout.confirmed",
         object_type="inferred_layout",
-        object_id=layout_id,
+        object_id=layout.id,
         details={"image_id": layout.image_id, "header_len": layout.header_len},
     )
     _reindex_confirmed_layout(data_dir, actor, case_id, updated)

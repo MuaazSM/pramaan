@@ -114,6 +114,7 @@ def _request_bodies() -> dict[tuple[str, str], dict[str, Any]]:
         ("post", "/api/cases/{cid}/exports"): {"channel": 1},
         ("post", "/api/cases/{cid}/anchors"): {},
         ("post", "/api/inferred-layouts/{lid}/confirm"): {},
+        ("post", "/api/cases/{cid}/evidence/{eid}/inferred-layout/confirm"): {},
         ("post", "/api/clock-models/{id}/override"): {"reason": "test override"},
         ("post", "/api/cases/{cid}/analytics/run"): {},
     }
@@ -147,7 +148,11 @@ def test_route_matches_schema(
     operation = spec["paths"][template][method]
 
     params = _path_params(template)
-    if template == "/api/evidence/{eid}/inferred-layout":
+    if template in (
+        "/api/evidence/{eid}/inferred-layout",
+        "/api/cases/{cid}/evidence/{eid}/inferred-layout",
+        "/api/cases/{cid}/evidence/{eid}/inferred-layout/confirm",
+    ):
         # Only the secondary (Tier B) evidence image has an inferred layout.
         params = {**params, "eid": store.list_evidence(store.DATA.case.id)[1].id}
     path = _fill_path(template, params)
