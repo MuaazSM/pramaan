@@ -7,10 +7,10 @@ self-consistency on every image, and writes corpus/manifest.json.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
-import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -175,7 +175,9 @@ def build_all(
             file=sys.stderr,
         )
 
-    manifest.write_manifest(manifest_path, profile, entries, generated_at_s=time.time())
+    # Deterministic manifest: no wall clock (CLAUDE.md rule 5); honour SOURCE_DATE_EPOCH if set.
+    generated_at_s = float(os.environ.get("SOURCE_DATE_EPOCH", "0"))
+    manifest.write_manifest(manifest_path, profile, entries, generated_at_s=generated_at_s)
     print(f"== wrote {manifest_path} ({len(entries)} images) ==", file=sys.stderr)
     return entries
 
