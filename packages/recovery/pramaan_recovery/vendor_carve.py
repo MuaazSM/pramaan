@@ -19,6 +19,7 @@ import hashlib
 
 from pramaan_core import scan
 from pramaan_core.evidence import EvidenceReader
+from pramaan_core.ids import frame_id as make_frame_id
 from pramaan_core.models import ByteRange, FrameRef
 from pramaan_formats import dhav, hwsim, mpegps, nalutil
 
@@ -50,10 +51,10 @@ def carve_dhav(reader: EvidenceReader, image_id: str, ranges: list[ByteRange]) -
                 local = record.payload_offset - start
                 payload = data[local : local + record.payload_len]
                 frame_type = record.frame_type if record.frame_type in ("I", "P") else "other"
-                frame_id = hashlib.sha256(payload).hexdigest()[:24]
+                payload_sha256 = hashlib.sha256(payload).hexdigest()
                 frames.append(
                     FrameRef(
-                        frame_id=frame_id,
+                        frame_id=make_frame_id(image_id, record.header_offset, payload_sha256),
                         image_id=image_id,
                         channel=record.channel,
                         stream="main",
@@ -69,6 +70,7 @@ def carve_dhav(reader: EvidenceReader, image_id: str, ranges: list[ByteRange]) -
                         source="carved",
                         recording_id=None,
                         deleted=True,
+                        payload_sha256=payload_sha256,
                     )
                 )
     frames.sort(key=lambda f: f.payload_offset)
@@ -123,6 +125,9 @@ def carve_hwsim(reader: EvidenceReader, image_id: str, ranges: list[ByteRange]) 
             channel = roster[run_index % len(roster)] if roster else None
             run_index += 1
             for au in aus:
+                slice_nal = au[-1]
+                nal_local = slice_nal.payload_offset - start
+                nal_payload = data[nal_local : nal_local + slice_nal.nal_len]
                 frames.append(
                     hwsim.hw_au_to_frame_ref(
                         au,
@@ -132,6 +137,7 @@ def carve_hwsim(reader: EvidenceReader, image_id: str, ranges: list[ByteRange]) 
                         recording_id=None,
                         source="carved",
                         deleted=True,
+                        payload_sha256=hashlib.sha256(nal_payload).hexdigest(),
                     )
                 )
     frames.sort(key=lambda f: f.payload_offset)
@@ -163,10 +169,10 @@ def carve_hiksim_ps(
                 local = au.payload_offset - start
                 payload = data[local : local + au.payload_len]
                 frame_type = nalutil.classify_access_unit(payload)
-                frame_id = hashlib.sha256(payload).hexdigest()[:24]
+                payload_sha256 = hashlib.sha256(payload).hexdigest()
                 frames.append(
                     FrameRef(
-                        frame_id=frame_id,
+                        frame_id=make_frame_id(image_id, au.header_offset, payload_sha256),
                         image_id=image_id,
                         channel=au.channel,
                         stream="main",
@@ -182,6 +188,7 @@ def carve_hiksim_ps(
                         source="carved",
                         recording_id=None,
                         deleted=True,
+                        payload_sha256=payload_sha256,
                     )
                 )
     frames.sort(key=lambda f: f.payload_offset)

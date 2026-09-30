@@ -21,6 +21,7 @@ from typing import Any, ClassVar
 
 from pramaan_core.evidence import EvidenceReader, hash_image
 from pramaan_core.ids import content_id
+from pramaan_core.ids import frame_id as make_frame_id
 from pramaan_core.models import ByteRange, FrameRef, Recording, VendorMatch
 
 from pramaan_formats import dhav
@@ -189,10 +190,10 @@ class DhsimParser:
         for rec_dhav in records:
             local_start = rec_dhav.payload_offset - byte_range.offset
             payload = data[local_start : local_start + rec_dhav.payload_len]
-            frame_id = hashlib.sha256(payload).hexdigest()[:24]
+            payload_sha256 = hashlib.sha256(payload).hexdigest()
             frame_type = rec_dhav.frame_type if rec_dhav.frame_type in ("I", "P") else "other"
             yield FrameRef(
-                frame_id=frame_id,
+                frame_id=make_frame_id(rec.image_id, rec_dhav.header_offset, payload_sha256),
                 image_id=rec.image_id,
                 channel=rec_dhav.channel,
                 stream=rec.stream,
@@ -208,6 +209,7 @@ class DhsimParser:
                 source="index",
                 recording_id=rec.id,
                 deleted=rec.deleted,
+                payload_sha256=payload_sha256,
             )
 
     def unindexed_ranges(self, r: EvidenceReader) -> list[ByteRange]:

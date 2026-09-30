@@ -76,7 +76,11 @@ class Recording(_Frozen):
 
 
 class FrameRef(_Frozen):
-    frame_id: str  # sha256(payload)[:24]
+    frame_id: str  # FIX-3: content id of (image_id, offset, payload_sha256) —
+    # unique per physical frame; see pramaan_core.ids.frame_id. NOT simply
+    # sha256(payload)[:24] (that collapses distinct frames sharing identical
+    # payload bytes onto one id) — use payload_sha256 below for a pure
+    # payload-integrity check.
     image_id: str
     channel: int | None
     stream: str | None
@@ -92,6 +96,14 @@ class FrameRef(_Frozen):
     source: Literal["index", "carved", "inferred"]
     recording_id: str | None
     deleted: bool
+    # FIX-3, additive per this file's own "change only additively" rule:
+    # full sha256 hex of the payload bytes, kept separate from frame_id so
+    # payload-integrity checks (e.g. the "prove-it" hex view) have a field
+    # that *is* purely a hash of the bytes. Optional/None only for rows
+    # written before this field existed or by a caller that hasn't been
+    # updated yet — every producer under packages/core, packages/formats,
+    # packages/recovery now always sets it.
+    payload_sha256: str | None = None
 
 
 class LogEvent(_Frozen):

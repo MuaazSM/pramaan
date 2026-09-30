@@ -42,6 +42,7 @@ SCHEMA = pa.schema(
         pa.field("source", pa.string()),
         pa.field("recording_id", pa.string()),
         pa.field("deleted", pa.bool_()),
+        pa.field("payload_sha256", pa.string()),
         pa.field("ts_osd_us", pa.int64()),
         pa.field("ts_norm_us", pa.int64()),
         pa.field("norm_confidence", pa.float64()),

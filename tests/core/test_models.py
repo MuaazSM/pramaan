@@ -91,6 +91,7 @@ SAMPLES: dict[type, dict[str, Any]] = {
         source="index",
         recording_id="rec_" + "a" * 16,
         deleted=False,
+        payload_sha256="c" * 64,
     ),
     LogEvent: dict(
         id="log_1",

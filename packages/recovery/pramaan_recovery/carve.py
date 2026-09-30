@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 from pramaan_core import scan
 from pramaan_core.evidence import EvidenceReader
+from pramaan_core.ids import frame_id as make_frame_id
 from pramaan_core.models import ByteRange, FrameRef
 
 from pramaan_recovery.sps import MalformedSps, SpsInfo, parse_sps
@@ -157,10 +158,10 @@ def to_frame_refs(
     frames: list[FrameRef] = []
     for au, channel in zip(aus, channels, strict=True):
         payload = reader.read(au.payload_offset, au.payload_len)
-        frame_id = hashlib.sha256(payload).hexdigest()[:24]
+        payload_sha256 = hashlib.sha256(payload).hexdigest()
         frames.append(
             FrameRef(
-                frame_id=frame_id,
+                frame_id=make_frame_id(image_id, au.payload_offset, payload_sha256),
                 image_id=image_id,
                 channel=channel if channel > 0 else None,
                 stream="main",
@@ -176,6 +177,7 @@ def to_frame_refs(
                 source="carved",
                 recording_id=None,
                 deleted=True,
+                payload_sha256=payload_sha256,
             )
         )
     return frames

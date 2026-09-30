@@ -19,6 +19,7 @@ from typing import Any, ClassVar
 
 from pramaan_core.evidence import EvidenceReader, hash_image
 from pramaan_core.ids import content_id
+from pramaan_core.ids import frame_id as make_frame_id
 from pramaan_core.models import ByteRange, FrameRef, Recording, VendorMatch
 
 from pramaan_formats import mpegps, nalutil
@@ -215,9 +216,9 @@ class HiksimParser:
             local_start = au.payload_offset - byte_range.offset
             payload = data[local_start : local_start + au.payload_len]
             frame_type = nalutil.classify_access_unit(payload)
-            frame_id = hashlib.sha256(payload).hexdigest()[:24]
+            payload_sha256 = hashlib.sha256(payload).hexdigest()
             yield FrameRef(
-                frame_id=frame_id,
+                frame_id=make_frame_id(rec.image_id, au.header_offset, payload_sha256),
                 image_id=rec.image_id,
                 channel=au.channel if au.channel is not None else rec.channel,
                 stream=rec.stream,
@@ -233,6 +234,7 @@ class HiksimParser:
                 source="index",
                 recording_id=rec.id,
                 deleted=False,
+                payload_sha256=payload_sha256,
             )
 
     def unindexed_ranges(self, r: EvidenceReader) -> list[ByteRange]:

@@ -40,6 +40,7 @@ from typing import Any, ClassVar
 
 from pramaan_core.evidence import EvidenceReader, hash_image
 from pramaan_core.ids import content_id
+from pramaan_core.ids import frame_id as make_frame_id
 from pramaan_core.models import ByteRange, FrameRef, Recording, VendorMatch
 
 from pramaan_formats.base import register
@@ -278,13 +279,20 @@ def hw_au_to_frame_ref(
     recording_id: str | None,
     source: str,
     deleted: bool,
+    payload_sha256: str,
 ) -> FrameRef:
+    """``payload_sha256`` is the full sha256 hex of the slice NAL's own
+    payload bytes (``data[payload_offset:payload_offset+nal_len]``) —
+    computed by the caller, which already holds those bytes (``data`` in
+    ``iter_frames``/``vendor_carve.carve_hwsim``); this function never reads
+    the image itself. ``frame_id`` is then derived from
+    ``(image_id, header_offset, payload_sha256)`` (FIX-3:
+    ``pramaan_core.ids.frame_id``) so two access units sharing identical
+    payload bytes at different physical offsets never collide."""
     slice_nal = au[-1]  # group_hw_access_units always ends a group on a VCL NAL
     is_idr = any(n.nal_type == NAL_IDR for n in au)
     return FrameRef(
-        frame_id=hashlib.sha256(
-            f"{slice_nal.payload_offset}:{slice_nal.nal_len}".encode()
-        ).hexdigest()[:24],
+        frame_id=make_frame_id(image_id, slice_nal.header_offset, payload_sha256),
         image_id=image_id,
         channel=channel,
         stream=stream,
@@ -300,6 +308,7 @@ def hw_au_to_frame_ref(
         source=source,  # type: ignore[arg-type]
         recording_id=recording_id,
         deleted=deleted,
+        payload_sha256=payload_sha256,
     )
 
 
@@ -405,6 +414,9 @@ class HwsimParser:
         data = r.read(byte_range.offset, byte_range.length)
         nals = walk_hw_nals(data, byte_range.offset, byte_range.length)
         for au in group_hw_access_units(nals):
+            slice_nal = au[-1]
+            local = slice_nal.payload_offset - byte_range.offset
+            payload = data[local : local + slice_nal.nal_len]
             yield hw_au_to_frame_ref(
                 au,
                 image_id=rec.image_id,
@@ -413,6 +425,7 @@ class HwsimParser:
                 recording_id=rec.id,
                 source="index",
                 deleted=False,
+                payload_sha256=hashlib.sha256(payload).hexdigest(),
             )
 
     def unindexed_ranges(self, r: EvidenceReader) -> list[ByteRange]:

@@ -47,6 +47,7 @@ from typing import Literal
 from pramaan_core import scan
 from pramaan_core.evidence import EvidenceReader, hash_image
 from pramaan_core.ids import content_id
+from pramaan_core.ids import frame_id as make_frame_id
 from pramaan_core.models import FrameRef, InferredField, InferredLayout
 
 #: docs/01-FORENSIC-CORE.md §4.8 step 1.
@@ -722,15 +723,16 @@ class InferredParser:
                 end = reader.size
             payload_len = max(0, end - offset)
             payload = reader.read(offset, payload_len)
-            frame_id = hashlib.sha256(payload).hexdigest()[:24]
+            payload_sha256 = hashlib.sha256(payload).hexdigest()
+            header_offset = offset - self.layout.header_len
             yield FrameRef(
-                frame_id=frame_id,
+                frame_id=make_frame_id(image_id, header_offset, payload_sha256),
                 image_id=image_id,
                 channel=channel_val,
                 stream="main",
                 codec=self.layout.codec,
                 frame_type="I" if is_idr else "P",
-                header_offset=offset - self.layout.header_len,
+                header_offset=header_offset,
                 payload_offset=offset,
                 payload_len=payload_len,
                 ts_header_us=ts_us,
@@ -740,4 +742,5 @@ class InferredParser:
                 source="inferred",
                 recording_id=None,
                 deleted=False,
+                payload_sha256=payload_sha256,
             )

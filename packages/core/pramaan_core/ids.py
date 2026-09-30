@@ -44,3 +44,28 @@ def content_id(prefix: str, obj: Any, length: int = 16) -> str:
     pass those fields as ``obj`` (a dict is the usual choice).
     """
     return f"{prefix}_{content_hash(obj)[:length]}"
+
+
+def frame_id(image_id: str, offset: int, payload_sha256: str, length: int = 24) -> str:
+    """Deterministic id for one *physical* frame (FIX-3).
+
+    Must be unique per physical frame, not per payload. Hashing only the
+    payload bytes (the pre-FIX-3 scheme) collapses distinct frames that
+    happen to carry identical bytes — e.g. repeated/carved duplicates or a
+    static scene — into a single id, which silently merges unrelated rows
+    anywhere a caller keys a dict by ``frame_id`` (docs/progress/QD.md).
+    Mixing in ``image_id`` and the frame's own byte offset (its
+    ``header_offset`` when the format has one, else ``payload_offset``)
+    makes two frames at different physical locations always get different
+    ids, while re-deriving the id for the *same* physical frame (same
+    image, same offset, same bytes) is stable across runs and hosts
+    (CLAUDE.md rule 5). ``payload_sha256`` (the full hex digest, kept
+    verbatim on ``FrameRef.payload_sha256``) is still part of the input so
+    a frame whose bytes are found to differ on re-read also gets a
+    different id.
+    """
+    return content_id(
+        "frm",
+        {"image_id": image_id, "offset": offset, "payload_sha256": payload_sha256},
+        length=length,
+    )
