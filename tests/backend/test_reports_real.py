@@ -24,6 +24,7 @@ Acceptance covered here:
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -276,8 +277,18 @@ def test_certificate_hash_values_equal_evidence_hashes() -> None:
     assert len(certificate["part_a"]["records"]) == 2
     assert certificate["part_a"]["records"][0]["make_model"] == "Hikvision DS-7208"
     assert certificate["part_a"]["records"][0]["serial"] == "SN-1"
-    # Second evidence item had no seizure clock observation recorded.
-    assert certificate["part_a"]["records"][1]["make_model"] == "Not recorded at intake"
+    # Second evidence item had no seizure clock observation recorded, and no
+    # fingerprint/vendor match to fall back to.
+    assert certificate["part_a"]["records"][1]["make_model"] == "Not recorded"
+    # Neither evidence item was acquired by Pramaan (no acquire.acquire
+    # provenance) — the certificate must say so honestly, not claim a
+    # write-blocked acquisition that didn't happen (CLAUDE.md rule 7).
+    for record in certificate["part_a"]["records"]:
+        assert "Registered by Pramaan as an already-present" in record["how_produced"]
+        assert "write-blocked" not in record["how_produced"]
+    # The rendered certificate never prints the absolute host path.
+    for record in certificate["part_a"]["records"]:
+        assert "/evidence/" not in record["identity"]
 
     expected_hashes = {(e["id"], "SHA-256", e["sha256"]) for e in evidence} | {
         (e["id"], "MD5", e["md5"]) for e in evidence
@@ -287,12 +298,188 @@ def test_certificate_hash_values_equal_evidence_hashes() -> None:
             (row["item"].split(": ", 1)[-1], row["algorithm"], row["value"])
             for row in certificate[section]["hash_lines"]
         }
-        # hash_lines key on the evidence's path/id label, not the bare id —
-        # re-derive the (path -> id) mapping to compare like for like.
-        path_to_id = {e["path"]: e["id"] for e in evidence}
+        # hash_lines key on the evidence's file-name label (never the
+        # absolute path — item 6), not the bare id — re-derive the
+        # (basename -> id) mapping to compare like for like.
+        path_to_id = {Path(e["path"]).name: e["id"] for e in evidence}
         normalised = {(path_to_id.get(item, item), algo, val) for item, algo, val in by_id}
         assert expected_hashes <= normalised
 
     assert certificate["declaration_placeholder"]
     assert certificate["template_note"]
     assert certificate["part_b"]["examiner"]["username"] == "examiner"
+
+
+def _minimal_manifest_inputs(**overrides: Any) -> ManifestInputs:
+    base: dict[str, Any] = dict(
+        case={"id": "case_1", "case_number": "CR-FIX10", "title": "FIX-10 test",
+              "fir_reference": None, "lab": "Pramaan Lab", "status": "open"},
+        examiner={"username": "examiner", "role": "examiner"},
+        evidence=[
+            {"id": "img_1", "path": "/Users/examiner/host-only-path/disk_one.img",
+             "format": "raw", "size_bytes": 1024, "sha256": "1" * 64, "md5": "2" * 32,
+             "acquired_utc": "2026-09-30T03:10:07.754536Z", "verified": True}
+        ],
+        vendor_matches={}, recordings=[], deletion_findings=[], clock_observations=[],
+        log_events=[], custody={"head_hash": "c" * 64, "length": 3}, anchors=[],
+        methods={"tool": "pramaan", "tool_version": "0.1.0", "stage_order": []},
+    )
+    base.update(overrides)
+    return ManifestInputs(**base)
+
+
+def test_certificate_acquired_by_pramaan_wording_is_used_only_when_true() -> None:
+    """CLAUDE.md rule 7 / item 5, docs/progress/FIX-10.md: the certificate
+    must only claim a write-blocked acquisition when the evidence item's
+    provenance actually says so."""
+    inputs = _minimal_manifest_inputs(
+        evidence=[
+            {"id": "img_1", "path": "/x/acquired.img", "format": "raw", "size_bytes": 10,
+             "sha256": "a" * 64, "md5": "b" * 32, "acquired_utc": "2026-01-01T00:00:00Z",
+             "verified": True, "intake_kind": "acquired_by_pramaan"},
+        ]
+    )
+    certificate = build_certificate_data(build_manifest(inputs))
+    how_produced = certificate["part_a"]["records"][0]["how_produced"]
+    assert "write-blocked" in how_produced
+    assert "Registered by Pramaan as an already-present" not in how_produced
+
+
+def test_certificate_make_model_falls_back_to_fingerprint_result() -> None:
+    """Item 5: when the examiner didn't record a make/model at intake,
+    fall back to Pramaan's own vendor/format fingerprinting result — but
+    label it as an inference, not an examiner-verified fact."""
+    inputs = _minimal_manifest_inputs(
+        vendor_matches={
+            "img_1": [
+                {"family": "hiksim", "display_name": "Hikvision-like (synthetic)",
+                 "platform": "hikvision", "tier": "A", "confidence": 0.95, "evidence": [],
+                 "model": "DS-7208HUHI", "serial": "FPSN-42", "fs_version": None}
+            ]
+        }
+    )
+    certificate = build_certificate_data(build_manifest(inputs))
+    record = certificate["part_a"]["records"][0]
+    assert record["make_model"] == "DS-7208HUHI (as identified by Pramaan from on-disk metadata)"
+    assert record["serial"] == "FPSN-42 (as identified by Pramaan from on-disk metadata)"
+
+
+def test_certificate_never_prints_absolute_host_path() -> None:
+    """Item 6: the certificate identity field shows the evidence file name,
+    never the examiner's absolute host filesystem path."""
+    inputs = _minimal_manifest_inputs()
+    certificate = build_certificate_data(build_manifest(inputs))
+    identity = certificate["part_a"]["records"][0]["identity"]
+    assert "host-only-path" not in identity
+    assert "disk_one.img" in identity
+
+
+def test_rendered_report_and_certificate_html_have_no_internal_doc_references() -> None:
+    """Item 4: legal-facing rendered text must never cite internal repo
+    docs/rules — those are implementation details, not something a court
+    reader should see."""
+    from pramaan_reporting.appendix import build_hash_appendix
+    from pramaan_reporting.manifest import manifest_bytes, report_sha256
+    from pramaan_reporting.render import render_certificate_html, render_report_html
+
+    inputs = _minimal_manifest_inputs()
+    manifest = build_manifest(inputs)
+    manifest_bytes(manifest)  # exercised for parity with the real pipeline
+    sha256 = report_sha256(manifest)
+    certificate = build_certificate_data(manifest)
+    appendix = build_hash_appendix(manifest, sha256)
+    envelope = {"report_sha256": sha256, "generated_utc": "2026-09-30T03:10:07.754536Z"}
+
+    report_html = render_report_html(
+        {"manifest": manifest, "envelope": envelope, "certificate": certificate,
+         "appendix": appendix, "thumbnails": []}
+    )
+    certificate_html = render_certificate_html({"envelope": envelope, "certificate": certificate})
+
+    for label, html in (("report", report_html), ("certificate", certificate_html)):
+        # Strip the <style> block: CSS comments live in the HTML source but
+        # are never part of the rendered/printed page a reader sees, so
+        # they're not "legal text" — only the visible body matters here.
+        visible = re.sub(r"<style>.*?</style>", "", html, flags=re.DOTALL)
+        for needle in ("docs/", "CLAUDE.md", "PROMPTBOOK", "PRD §", "§9 step"):
+            assert needle not in visible, f"{label}.html leaked internal doc reference {needle!r}"
+
+
+def test_rendered_report_shows_evidence_filename_not_full_path_in_body() -> None:
+    """Item 6: the report body's evidence table shows the file name; the
+    full host path is confined to the appendix."""
+    from pramaan_reporting.appendix import build_hash_appendix
+    from pramaan_reporting.manifest import report_sha256
+    from pramaan_reporting.render import render_report_html
+
+    inputs = _minimal_manifest_inputs()
+    manifest = build_manifest(inputs)
+    sha256 = report_sha256(manifest)
+    certificate = build_certificate_data(manifest)
+    appendix = build_hash_appendix(manifest, sha256)
+    envelope = {"report_sha256": sha256, "generated_utc": "2026-09-30T03:10:07.754536Z"}
+
+    report_html = render_report_html(
+        {"manifest": manifest, "envelope": envelope, "certificate": certificate,
+         "appendix": appendix, "thumbnails": []}
+    )
+    full_path = manifest["evidence"][0]["path"]
+    assert "disk_one.img" in report_html
+    # The full absolute path must appear at most once per evidence item —
+    # in the appendix's dedicated "source path" row — never inline in the
+    # evidence table itself.
+    assert report_html.count(full_path) <= len(manifest["evidence"])
+    body_before_appendix = report_html.split("Appendix")[0]
+    assert full_path not in body_before_appendix
+
+
+def test_print_css_is_not_html_entity_escaped_in_rendered_html() -> None:
+    """Regression test for the FIX-10 root cause of "fonts render as Times
+    fallback": ``print_css()`` is trusted, in-process-generated CSS, and
+    must reach the ``<style>`` block un-escaped — if Jinja2 autoescaping
+    ever HTML-escapes it again, every quoted ``font-family``/``url(...)``
+    declaration silently breaks and WeasyPrint falls back to its default
+    serif font.
+    """
+    from pramaan_reporting.render import render_report_html
+    from pramaan_reporting.styles import print_css
+
+    inputs = _minimal_manifest_inputs()
+    manifest = build_manifest(inputs)
+    certificate = build_certificate_data(manifest)
+    envelope = {"report_sha256": report_sha256(manifest), "generated_utc": "2026-01-01T00:00:00Z"}
+    report_html = render_report_html(
+        {"manifest": manifest, "envelope": envelope, "certificate": certificate,
+         "appendix": [], "thumbnails": []}
+    )
+    assert "&#34;" not in report_html
+    assert "&quot;" not in report_html
+    assert '@font-face' in report_html
+    assert 'font-family: "Geist Sans"' in report_html
+    # The CSS itself must actually declare the bundled fonts as data URIs
+    # (no filesystem/network font lookup at render time).
+    assert "data:font/woff2;base64," in print_css()
+
+
+def test_report_pdf_embeds_bundled_fonts_not_serif_fallback(
+    real_client: TestClient, tmp_path: Path, real_evidence_dir: Path
+) -> None:
+    """Item 1, verified the way the task asks: inspect the actual PDF's
+    embedded font resources with ``pdffonts`` (skipped if not installed)."""
+    import shutil
+    import subprocess as sp
+
+    pdffonts = shutil.which("pdffonts")
+    if pdffonts is None:
+        pytest.skip("pdffonts (poppler-utils) not available in this environment")
+
+    case = _register_and_scan(real_client, tmp_path, real_evidence_dir, "CR-B3-FONTS")
+    report = real_client.post(f"/api/cases/{case['id']}/reports", json={}).json()
+    pdf_resp = real_client.get(f"/api/reports/{report['id']}/pdf")
+    assert pdf_resp.status_code == 200
+
+    pdf_path = tmp_path / "report.pdf"
+    pdf_path.write_bytes(pdf_resp.content)
+    out = sp.run([pdffonts, str(pdf_path)], check=True, capture_output=True, text=True).stdout
+    assert "Times" not in out, f"report.pdf still falls back to a serif font:\n{out}"
+    assert "Geist" in out, f"report.pdf does not embed the bundled Geist font:\n{out}"

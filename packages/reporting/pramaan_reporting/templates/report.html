@@ -18,11 +18,11 @@
     <tr><th>FIR / reference no.</th><td>{{ manifest.case.fir_reference or "—" }}</td></tr>
     <tr><th>Lab</th><td>{{ manifest.case.lab or "—" }}</td></tr>
     <tr><th>Examiner</th><td>{{ manifest.examiner.username }} ({{ manifest.examiner.role }})</td></tr>
-    <tr><th>Report generated</th><td class="mono">{{ envelope.generated_utc }}</td></tr>
+    <tr><th>Report generated</th><td class="mono">{{ envelope.generated_utc | fmt_ts }}</td></tr>
   </table>
 
   <div class="integrity-box">
-    <div class="row"><span>Report hash (SHA-256, canonical manifest)</span><span class="mono">{{ envelope.report_sha256 }}</span></div>
+    <div class="row"><span>Report hash (SHA-256, canonical manifest)</span><span class="mono">{{ envelope.report_sha256 | hash_break }}</span></div>
     <div class="row"><span>Custody chain head hash</span><span class="mono">{{ manifest.custody.head_hash | shorthash }}</span> <span class="chip chip-ok">custody length {{ manifest.custody.length }}</span></div>
     <div class="row"><span>Evidence items</span><span>{{ manifest.evidence | length }}</span></div>
     <div class="row"><span>Recordings indexed/recovered</span><span>{{ manifest.recordings_summary.count }}</span></div>
@@ -33,7 +33,7 @@
 
 <div class="section-break"></div>
 <h2>1. SOP / evidence intake record</h2>
-<p class="muted small">Per SWGDE-aligned intake (docs/02-BACKEND.md §5): device-displayed time is compared against a reference clock at seizure and stored as a clock observation. Raw observations below; normalised multi-clock timelines are produced by the AI timeline workstream where available.</p>
+<p class="muted small">Per SWGDE-aligned intake: device-displayed time is compared against a reference clock at seizure and stored as a clock observation. Raw observations below; normalised multi-clock timelines are produced by the AI timeline workstream where available.</p>
 <table>
   <tr><th>Image</th><th>Source</th><th>Channel</th><th>Device time</th><th>Reference time</th><th>Offset (device − true)</th></tr>
   {% for obs in manifest.clock_observations %}
@@ -51,15 +51,17 @@
 </table>
 
 <h2>2. Evidence and hashes</h2>
+<p class="muted small">Full source paths are recorded in the appendix; only the evidence file name is shown here.</p>
 <table>
-  <tr><th>ID</th><th>Path</th><th>Format</th><th>Size</th><th>SHA-256</th><th>MD5</th><th>Verified</th></tr>
+  <tr><th>ID</th><th>Evidence file</th><th>Format</th><th>Size</th><th>Intake</th><th>SHA-256</th><th>MD5</th><th>Verified</th></tr>
   {% for e in manifest.evidence %}
   <tr>
     <td class="mono">{{ e.id }}</td>
-    <td>{{ e.path }}</td>
+    <td class="mono">{{ e.path | basename }}</td>
     <td>{{ e.format }}</td>
     <td>{{ e.size_bytes }} B</td>
-    <td class="mono">{{ e.sha256 }}</td>
+    <td>{% if e.intake_kind == "acquired_by_pramaan" %}Acquired by Pramaan{% else %}Registered (existing image){% endif %}</td>
+    <td class="mono">{{ e.sha256 | hash_break }}</td>
     <td class="mono">{{ e.md5 }}</td>
     <td>{% if e.verified %}<span class="chip chip-ok">verified</span>{% else %}<span class="chip chip-warn">unverified</span>{% endif %}</td>
   </tr>
@@ -159,7 +161,7 @@
 
 {% if manifest.accepted_ai_drafts %}
 <h2>7. Accepted AI drafts</h2>
-<p class="muted small">Every sentence below was drafted by Claude, cites the evidence IDs it was drafted from, and was explicitly accepted by an examiner (CLAUDE.md rule 6: the LLM never produces a finding on its own).</p>
+<p class="muted small">Every sentence below was drafted by an AI assistant, cites the evidence IDs it was drafted from, and was explicitly reviewed and accepted by an examiner before inclusion in this report. The AI assistant never produces a finding on its own.</p>
 {% for draft in manifest.accepted_ai_drafts %}
 <div class="notice"><span class="chip chip-ai">AI draft · accepted by {{ draft.accepted_by }}</span><p>{{ draft.text }}</p></div>
 {% endfor %}
@@ -178,7 +180,7 @@
     <td><span class="tier-badge">{{ a.backend }}</span></td>
     <td>{{ a.from_seq }}–{{ a.to_seq }}</td>
     <td class="mono">{{ a.merkle_root | shorthash }}</td>
-    <td class="mono">{{ a.ts_utc }}</td>
+    <td class="mono">{{ a.ts_utc | fmt_ts }}</td>
   </tr>
   {% else %}
   <tr><td colspan="5" class="muted">No anchors recorded at report generation time.</td></tr>
@@ -202,7 +204,7 @@
 <table>
   <tr><th>Item</th><th>Algorithm</th><th>Value</th></tr>
   {% for row in appendix %}
-  <tr><td>{{ row.item }}</td><td>{{ row.algorithm }}</td><td class="mono small">{{ row.value }}</td></tr>
+  <tr><td>{{ row.item }}</td><td>{{ row.algorithm }}</td><td class="mono small">{{ row.value | hash_break }}</td></tr>
   {% endfor %}
 </table>
 

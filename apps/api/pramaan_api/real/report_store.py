@@ -91,11 +91,47 @@ def _representative_thumbnails(
     return out
 
 
+def _intake_kind_by_image(data_dir: str, case_id: str) -> dict[str, str]:
+    """Per-image intake path — ``"acquired_by_pramaan"`` if a
+    ``Provenance`` record with step ``"acquire.acquire"`` is on file for
+    that image (``pramaan_core.acquire.acquire`` — a write-blocked,
+    read-only duplication), else ``"registered_existing"`` (
+    ``pramaan_core.acquire.register_existing`` — the image already existed
+    on disk and was only hashed/registered, never duplicated). The BSA
+    certificate's "how the record was produced" wording (item 5,
+    docs/progress/FIX-10.md, CLAUDE.md rule 7) must never claim an
+    acquisition Pramaan did not perform, so this is read directly off the
+    already-existing, nullable ``evidence_images.provenance`` column rather
+    than assumed — no ``pramaan_api.real.store``/schema change needed, and
+    every evidence image registered through the currently-exposed
+    ``register_evidence`` API path (the only one wired to a route today)
+    correctly comes back ``"registered_existing"``.
+    """
+    guarded = appdb.case_db(data_dir, case_id)
+    rows = guarded.conn.execute(
+        "SELECT id, provenance FROM evidence_images WHERE case_id = ?", (case_id,)
+    ).fetchall()
+    out: dict[str, str] = {}
+    for row in rows:
+        raw = row["provenance"]
+        step = None
+        if raw:
+            try:
+                step = json.loads(raw).get("step")
+            except (ValueError, AttributeError):
+                step = None
+        out[row["id"]] = (
+            "acquired_by_pramaan" if step == "acquire.acquire" else "registered_existing"
+        )
+    return out
+
+
 def _gather_manifest_inputs(data_dir: str, case_id: str, actor: User) -> ManifestInputs:
     case = real_store.get_case(data_dir, case_id)
     if case is None:
         raise not_found("case", case_id)
     evidence = real_store.list_evidence(data_dir, case_id)
+    intake_kind = _intake_kind_by_image(data_dir, case_id)
 
     vendor_matches: dict[str, list[dict[str, Any]]] = {}
     clock_observations: list[dict[str, Any]] = []
@@ -124,7 +160,10 @@ def _gather_manifest_inputs(data_dir: str, case_id: str, actor: User) -> Manifes
             "status": case.status,
         },
         examiner={"username": actor.username, "role": actor.role},
-        evidence=[e.model_dump() for e in evidence],
+        evidence=[
+            {**e.model_dump(), "intake_kind": intake_kind.get(e.id, "registered_existing")}
+            for e in evidence
+        ],
         vendor_matches=vendor_matches,
         recordings=recordings,
         deletion_findings=deletion_findings,

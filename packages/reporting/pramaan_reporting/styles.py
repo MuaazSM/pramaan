@@ -62,6 +62,19 @@ body {{
   background: #ffffff;
   margin: 0;
 }}
+/* These two elements exist only to feed the @page running header/footer
+   via CSS string-set — they must stay in the normal box tree
+   (display:none stops WeasyPrint from evaluating string-set at all) but
+   must never be visible inline on page 1. */
+.case-id-marker, .report-hash-marker {{
+  position: absolute;
+  visibility: hidden;
+  height: 0;
+  width: 0;
+  overflow: hidden;
+  font-size: 0;
+  line-height: 0;
+}}
 .case-id-marker {{ string-set: case-id content(); }}
 .report-hash-marker {{ string-set: report-hash content(); }}
 h1, h2, h3 {{ font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px 0; }}
@@ -74,7 +87,12 @@ h2 {{
 }}
 h3 {{ font-size: 11pt; margin-top: 14px; }}
 p {{ margin: 4px 0; }}
-.mono {{ font-family: "Geist Mono", monospace; font-variant-numeric: tabular-nums; }}
+.mono {{
+  font-family: "Geist Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}}
 .muted {{ color: {INK_400}; }}
 .small {{ font-size: 8.5pt; }}
 table {{ width: 100%; border-collapse: collapse; margin: 6px 0 12px 0; }}
@@ -103,7 +121,15 @@ td.mono, th.mono {{ font-family: "Geist Mono", monospace; font-size: 8.5pt; }}
   border-radius: 10px;
   background: {INK_50};
 }}
-.integrity-box .row {{ display: flex; justify-content: space-between; margin: 3px 0; }}
+.integrity-box .row {{
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 3px 0;
+}}
+.integrity-box .row > span {{ min-width: 0; }}
+.integrity-box .row > span.mono {{ text-align: right; }}
 .chip {{
   display: inline-block;
   padding: 1px 8px;

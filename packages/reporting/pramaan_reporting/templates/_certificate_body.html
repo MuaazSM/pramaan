@@ -11,14 +11,14 @@
   <tr><td>Device serial</td><td>{{ item.serial }}</td></tr>
   <tr><td>How the record was produced</td><td>{{ item.how_produced }}</td></tr>
   <tr><td>Size</td><td>{{ item.size_bytes }} bytes</td></tr>
-  <tr><td>Acquired (UTC)</td><td class="mono">{{ item.acquired_utc }}</td></tr>
+  <tr><td>Registered / acquired (UTC / IST)</td><td class="mono">{{ item.acquired_utc | fmt_ts }}</td></tr>
 </table>
 {% endfor %}
 <h3>Hash values (Part A)</h3>
 <table>
   <tr><th>Item</th><th>Algorithm</th><th>Value</th></tr>
   {% for row in certificate.part_a.hash_lines %}
-  <tr><td>{{ row.item }}</td><td>{{ row.algorithm }}</td><td class="mono small">{{ row.value }}</td></tr>
+  <tr><td>{{ row.item }}</td><td>{{ row.algorithm }}</td><td class="mono small">{{ row.value | hash_break }}</td></tr>
   {% endfor %}
 </table>
 <div class="sig-line">Signature, name, designation and date (person in charge) — to be completed by wet or digital signature.</div>
@@ -39,7 +39,7 @@
 <table>
   <tr><th>Item</th><th>Algorithm</th><th>Value</th></tr>
   {% for row in certificate.part_b.hash_lines %}
-  <tr><td>{{ row.item }}</td><td>{{ row.algorithm }}</td><td class="mono small">{{ row.value }}</td></tr>
+  <tr><td>{{ row.item }}</td><td>{{ row.algorithm }}</td><td class="mono small">{{ row.value | hash_break }}</td></tr>
   {% endfor %}
 </table>
 <p class="small">{{ certificate.part_b.verification_note }}</p>

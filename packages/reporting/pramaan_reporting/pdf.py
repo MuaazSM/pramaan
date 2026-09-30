@@ -54,8 +54,24 @@ def _try_weasyprint(html: str, base_url: str | None) -> bytes | None:
         return None
 
 
-def _render_with_playwright(html: str) -> bytes:
+def _render_with_playwright(html: str, footer_text: str | None) -> bytes:
+    # WeasyPrint's own @page margin-box CSS (running header/footer, "Page X
+    # of Y" — item 2, docs/progress/FIX-10.md) has no Chromium print-CSS
+    # equivalent; Chromium needs its own header/footerTemplate instead, so
+    # the fallback backend gets the same running footer via Playwright's
+    # API rather than silently shipping a PDF with no footer at all.
+    import html as _html
+
     from playwright.sync_api import sync_playwright
+
+    footer_label = _html.escape(footer_text) if footer_text else "Pramaan"
+    footer_template = (
+        "<div style='font-family: sans-serif; font-size: 8px; width: 100%; "
+        "padding: 0 16mm; color: #5B6479; display: flex; justify-content: space-between;'>"
+        f"<span>{footer_label}</span>"
+        "<span>Page <span class='pageNumber'></span> of <span class='totalPages'></span></span>"
+        "</div>"
+    )
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -66,22 +82,30 @@ def _render_with_playwright(html: str) -> bytes:
                 format="A4",
                 print_background=True,
                 margin={"top": "22mm", "bottom": "20mm", "left": "16mm", "right": "16mm"},
+                display_header_footer=True,
+                header_template="<span></span>",
+                footer_template=footer_template,
             )
             return pdf_bytes
         finally:
             browser.close()
 
 
-def html_to_pdf(html: str, *, base_url: str | None = None) -> tuple[bytes, PdfBackend]:
+def html_to_pdf(
+    html: str, *, base_url: str | None = None, footer_text: str | None = None
+) -> tuple[bytes, PdfBackend]:
     """Render ``html`` to PDF bytes, returning ``(pdf_bytes, backend_used)``.
 
     Tries WeasyPrint first; falls back to headless Chromium (Playwright) if
     WeasyPrint's native libraries can't be loaded in this environment.
+    ``footer_text`` (e.g. ``"<case number> — report <short hash>"``) is only
+    consulted by the Chromium fallback — WeasyPrint gets the equivalent
+    running footer from the HTML/CSS itself (``@page`` margin boxes).
     """
     weasy_result = _try_weasyprint(html, base_url)
     if weasy_result is not None:
         return weasy_result, "weasyprint"
-    return _render_with_playwright(html), "playwright-chromium"
+    return _render_with_playwright(html, footer_text), "playwright-chromium"
 
 
 def pdf_backend_available() -> PdfBackend | None:

@@ -33,9 +33,10 @@ BASE_LIMITATIONS: tuple[str, ...] = (
     "timeline workstream; where absent from this report, only the raw clock "
     "observations recorded at evidence intake / from device logs are listed.",
     "Motion analytics and object detections, where produced, are AI drafts "
-    "and are never treated as findings on their own (CLAUDE.md rule 6) — "
-    "every AI-drafted sentence in this report is labelled and cites the "
-    "evidence it was drafted from.",
+    "and are never treated as findings on their own — every AI-drafted "
+    "sentence in this report is labelled and cites the evidence it was "
+    "drafted from, and was explicitly accepted by an examiner before "
+    "inclusion.",
     "Anchoring in this report uses the local, hash-chained anchor ledger "
     "only. A permissioned-blockchain (Hyperledger Fabric) anchor backend is "
     "defined but not implemented in this environment; see the custody "

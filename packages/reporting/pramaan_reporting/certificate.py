@@ -11,6 +11,7 @@ text beyond field labels and a neutral declaration placeholder").
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import Any
 
 TEMPLATE_NOTE = (
@@ -31,31 +32,85 @@ DECLARATION_PLACEHOLDER = (
 )
 
 
+def _basename(path: str) -> str:
+    """The bare file name — the certificate never prints the absolute host
+    filesystem path (item 6, docs/progress/FIX-10.md)."""
+    name = PurePosixPath(str(path).replace("\\", "/")).name
+    return name or str(path)
+
+
 def _evidence_hash_lines(evidence: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """One line per evidence item per algorithm, full hash value, mono —
-    docs/02-BACKEND.md §9 step 4: "hash values in full, mono, one per line,
-    SHA-256 and MD5"."""
+    """One line per evidence item per algorithm, full hash value, mono."""
     lines: list[dict[str, str]] = []
     for item in evidence:
-        label = item.get("path") or item.get("id", "")
+        label = _basename(item.get("path") or "") or item.get("id", "")
         lines.append({"item": str(label), "algorithm": "SHA-256", "value": str(item["sha256"])})
         lines.append({"item": str(label), "algorithm": "MD5", "value": str(item["md5"])})
     return lines
 
 
-def _make_model_serial(intake_details: dict[str, Any]) -> tuple[str, str]:
-    make_model = str(intake_details.get("make_model_label") or "Not recorded at intake")
-    serial = str(intake_details.get("serial_label") or "Not recorded at intake")
+def _make_model_serial(
+    intake_details: dict[str, Any], vendor_matches_for_image: list[dict[str, Any]]
+) -> tuple[str, str]:
+    """Prefer the value the examiner recorded at intake; otherwise fall
+    back to Pramaan's own vendor/format fingerprinting result (item 5,
+    docs/progress/FIX-10.md), clearly labelled as such so a reader never
+    mistakes an automated inference for an examiner-verified fact; if
+    neither source has a value, say so plainly rather than inventing one.
+    """
+    make_model_label = intake_details.get("make_model_label")
+    serial_label = intake_details.get("serial_label")
+
+    if make_model_label:
+        make_model = str(make_model_label)
+    else:
+        fp_model = next(
+            (m.get("model") for m in vendor_matches_for_image if m.get("model")), None
+        )
+        make_model = (
+            f"{fp_model} (as identified by Pramaan from on-disk metadata)"
+            if fp_model
+            else "Not recorded"
+        )
+
+    if serial_label:
+        serial = str(serial_label)
+    else:
+        fp_serial = next(
+            (m.get("serial") for m in vendor_matches_for_image if m.get("serial")), None
+        )
+        serial = (
+            f"{fp_serial} (as identified by Pramaan from on-disk metadata)"
+            if fp_serial
+            else "Not recorded"
+        )
     return make_model, serial
 
 
-def _how_produced(evidence: list[dict[str, Any]]) -> str:
+def _how_produced(intake_kind: str, evidence: list[dict[str, Any]]) -> str:
+    """Honest, intake-path-specific wording (item 5, docs/progress/FIX-10.md,
+    CLAUDE.md rule 7): Pramaan currently only exposes evidence *registration*
+    of an already-present image (``pramaan_core.acquire.register_existing``)
+    — it must never claim to have performed a write-blocked duplication it
+    did not perform. ``intake_kind`` is derived, per evidence item, from
+    whether a ``Provenance`` record with step ``"acquire.acquire"`` is on
+    file for it (see ``apps/api/pramaan_api/real/report_store.py``); today
+    that is never the case, so every certificate currently reads the
+    "registered existing" wording, which is the truth for this build.
+    """
     formats = sorted({str(e.get("format", "raw")) for e in evidence})
+    fmt_label = "/".join(formats) if formats else "raw"
+    if intake_kind == "acquired_by_pramaan":
+        return (
+            f"Duplicated from the seized storage device by Pramaan ({fmt_label} image) "
+            "using a write-blocked, read-only acquisition; the acquired copy's SHA-256 "
+            "and MD5 hashes were verified against the source at acquisition time."
+        )
     return (
-        "Duplicated from the seized storage device using a write-blocked "
-        f"acquisition ({'/'.join(formats) if formats else 'raw'} image), "
-        "verified by SHA-256/MD5 comparison against the source at intake "
-        "(docs/02-BACKEND.md §5, SWGDE-aligned intake)."
+        f"Registered by Pramaan as an already-present {fmt_label} image supplied by "
+        "the examiner; the image was not itself duplicated/acquired by Pramaan. Its "
+        "SHA-256 and MD5 hashes were computed by Pramaan at the time of registration "
+        "and can be independently re-verified against the source file."
     )
 
 
@@ -68,6 +123,7 @@ def build_certificate_data(manifest: dict[str, Any]) -> dict[str, Any]:
     case = manifest["case"]
     evidence = manifest["evidence"]
     clock_obs = manifest["clock_observations"]
+    vendor_matches = manifest.get("vendor_matches", {})
 
     # Intake details (make/model/serial) are recorded once per image at
     # evidence registration as a ClockObservation.details blob
@@ -80,21 +136,26 @@ def build_certificate_data(manifest: dict[str, Any]) -> dict[str, Any]:
 
     part_a_items = []
     for item in evidence:
-        make_model, serial = _make_model_serial(intake_by_image.get(item["id"], {}))
+        make_model, serial = _make_model_serial(
+            intake_by_image.get(item["id"], {}), vendor_matches.get(item["id"], [])
+        )
+        basename = _basename(item.get("path") or "")
         part_a_items.append(
             {
                 "evidence_id": item["id"],
-                "identity": item.get("path", item["id"]),
+                "identity": f"{basename} (evidence id {item['id']})",
                 "make_model": make_model,
                 "serial": serial,
-                "how_produced": _how_produced([item]),
+                "how_produced": _how_produced(
+                    str(item.get("intake_kind", "registered_existing")), [item]
+                ),
                 "size_bytes": item["size_bytes"],
                 "acquired_utc": item["acquired_utc"],
             }
         )
 
     examination_performed = [
-        "Hash verification against the value recorded at acquisition",
+        "Hash verification against the value recorded at intake",
         "Vendor/format identification (fingerprinting)",
         "Index parsing of the live recording table",
         "Recovery of unindexed/deleted footage by structural carving",

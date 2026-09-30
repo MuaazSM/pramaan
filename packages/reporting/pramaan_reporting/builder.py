@@ -82,8 +82,12 @@ def build_report(
     )
     certificate_html = render_certificate_html({"envelope": envelope, "certificate": certificate})
 
-    pdf_bytes, backend = html_to_pdf(report_html)
-    certificate_pdf_bytes, cert_backend = html_to_pdf(certificate_html)
+    footer_text = (
+        f"Pramaan — {manifest['case'].get('case_number', '')} — report "
+        f"{sha256[:8]}…{sha256[-4:]}"
+    )
+    pdf_bytes, backend = html_to_pdf(report_html, footer_text=footer_text)
+    certificate_pdf_bytes, cert_backend = html_to_pdf(certificate_html, footer_text=footer_text)
 
     key_path, cert_path = load_or_create_lab_pdf_cert(keys_dir)
     signed_pdf = sign_pdf(pdf_bytes, key_path, cert_path, field_name="PramaanReportSignature")
