@@ -1,0 +1,273 @@
+{
+  "channels": [
+    {
+      "channel": 1,
+      "name": "Gate"
+    },
+    {
+      "channel": 2,
+      "name": "Shopfront"
+    },
+    {
+      "channel": 3,
+      "name": "Counter"
+    },
+    {
+      "channel": 4,
+      "name": "Rear lane"
+    }
+  ],
+  "clock": {
+    "osd_drift_s": {},
+    "segments": [
+      {
+        "end_device": null,
+        "offset_true_to_device_us": 0,
+        "start_device": "2026-03-12T10:00:00Z"
+      }
+    ],
+    "time_changes": []
+  },
+  "deletions": [
+    {
+      "action_device": "2026-03-12T10:06:12Z",
+      "actor": "admin",
+      "channel": 1,
+      "end_device": "2026-03-12T10:01:12Z",
+      "method": "format",
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "action_device": "2026-03-12T10:06:12Z",
+      "actor": "admin",
+      "channel": 2,
+      "end_device": "2026-03-12T10:01:12Z",
+      "method": "format",
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "action_device": "2026-03-12T10:06:12Z",
+      "actor": "admin",
+      "channel": 3,
+      "end_device": "2026-03-12T10:01:12Z",
+      "method": "format",
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "action_device": "2026-03-12T10:06:12Z",
+      "actor": "admin",
+      "channel": 4,
+      "end_device": "2026-03-12T10:01:12Z",
+      "method": "format",
+      "start_device": "2026-03-12T10:00:00Z"
+    }
+  ],
+  "device": {
+    "model": "HWSIM-NVR-8CH",
+    "serial": "SIMHW000123"
+  },
+  "family": "hwsim",
+  "hidden_layout": null,
+  "image": "hwsim_format",
+  "log_events": [],
+  "motion_events": [
+    {
+      "channel": 3,
+      "end_true": "2026-03-12T10:00:03Z",
+      "start_true": "2026-03-12T10:00:01Z"
+    },
+    {
+      "channel": 3,
+      "end_true": "2026-03-12T10:07:15Z",
+      "start_true": "2026-03-12T10:07:13Z"
+    }
+  ],
+  "recordings": [
+    {
+      "byte_ranges": [
+        [
+          4218880,
+          65536
+        ]
+      ],
+      "channel": 1,
+      "deleted": true,
+      "end_device": "2026-03-12T10:00:06Z",
+      "frames": 150,
+      "indexed": false,
+      "overwritten_frames": 150,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4284416,
+          69632
+        ]
+      ],
+      "channel": 2,
+      "deleted": true,
+      "end_device": "2026-03-12T10:00:06Z",
+      "frames": 150,
+      "indexed": false,
+      "overwritten_frames": 150,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4354048,
+          69632
+        ]
+      ],
+      "channel": 3,
+      "deleted": true,
+      "end_device": "2026-03-12T10:00:06Z",
+      "frames": 150,
+      "indexed": false,
+      "overwritten_frames": 150,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4423680,
+          65536
+        ]
+      ],
+      "channel": 4,
+      "deleted": true,
+      "end_device": "2026-03-12T10:00:06Z",
+      "frames": 150,
+      "indexed": false,
+      "overwritten_frames": 150,
+      "start_device": "2026-03-12T10:00:00Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4489216,
+          65536
+        ]
+      ],
+      "channel": 1,
+      "deleted": true,
+      "end_device": "2026-03-12T10:01:12Z",
+      "frames": 75,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:01:06Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4554752,
+          65536
+        ]
+      ],
+      "channel": 2,
+      "deleted": true,
+      "end_device": "2026-03-12T10:01:12Z",
+      "frames": 75,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:01:06Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4620288,
+          69632
+        ]
+      ],
+      "channel": 3,
+      "deleted": true,
+      "end_device": "2026-03-12T10:01:12Z",
+      "frames": 75,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:01:06Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4689920,
+          69632
+        ]
+      ],
+      "channel": 4,
+      "deleted": true,
+      "end_device": "2026-03-12T10:01:12Z",
+      "frames": 75,
+      "indexed": false,
+      "overwritten_frames": 0,
+      "start_device": "2026-03-12T10:01:06Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4218880,
+          65536
+        ]
+      ],
+      "channel": 1,
+      "deleted": true,
+      "end_device": "2026-03-12T10:07:18Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 150,
+      "start_device": "2026-03-12T10:07:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4284416,
+          69632
+        ]
+      ],
+      "channel": 2,
+      "deleted": true,
+      "end_device": "2026-03-12T10:07:18Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 150,
+      "start_device": "2026-03-12T10:07:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4354048,
+          69632
+        ]
+      ],
+      "channel": 3,
+      "deleted": true,
+      "end_device": "2026-03-12T10:07:18Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 150,
+      "start_device": "2026-03-12T10:07:12Z"
+    },
+    {
+      "byte_ranges": [
+        [
+          4423680,
+          65536
+        ]
+      ],
+      "channel": 4,
+      "deleted": true,
+      "end_device": "2026-03-12T10:07:18Z",
+      "frames": 150,
+      "indexed": true,
+      "overwritten_frames": 150,
+      "start_device": "2026-03-12T10:07:12Z"
+    }
+  ],
+  "seizure": {
+    "dvr_displayed": "2026-03-12T16:42:30",
+    "reference": "2026-03-12T16:37:18+05:30"
+  },
+  "sha256": "7f6c1175ca88abc899d08171f3556907bc64c30f12f056aaa086c89594c469f3",
+  "tier": "A"
+}

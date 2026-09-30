@@ -1,10 +1,7 @@
-"""`just corpus` entry point: builds the Q1-owned "small" profile corpus
-(HIKSIM, DHSIM, GENSIM — docs/05-INFRA-QA.md §4.3) into corpus/images/ and
-corpus/truth/, checks ground-truth self-consistency on every image, and
-writes corpus/manifest.json.
-
-HWSIM and XSIM (also listed in the §4.3 table) are Q2's job; this CLI does
-not build them.
+"""`just corpus` entry point: builds the full "small" profile corpus
+(docs/05-INFRA-QA.md §4.3 — HIKSIM/DHSIM/GENSIM from Q1, HWSIM/XSIM from
+Q2) into corpus/images/ and corpus/truth/, checks ground-truth
+self-consistency on every image, and writes corpus/manifest.json.
 """
 
 from __future__ import annotations
@@ -19,7 +16,7 @@ from pathlib import Path
 
 from pramaan_synthdvr import manifest
 from pramaan_synthdvr.truth import check_self_consistency
-from pramaan_synthdvr.writers import dhsim, gensim, hiksim
+from pramaan_synthdvr.writers import dhsim, gensim, hiksim, hwsim, xsim
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SMALL_PROFILE_LIMIT_BYTES = 128 * 1024 * 1024
@@ -71,6 +68,38 @@ _JOBS: list[tuple[str, str, str, Callable[[Path, Path], Path]]] = [
         "gensim",
         "n/a",
         lambda images_dir, truth_dir: gensim.build_image("gensim_carve", images_dir, truth_dir),
+    ),
+    (
+        "hwsim_format",
+        "hwsim",
+        "format",
+        lambda images_dir, truth_dir: hwsim.build_image(
+            "hwsim_format", images_dir, truth_dir, scenario="format"
+        ),
+    ),
+    (
+        "hwsim_overwrite",
+        "hwsim",
+        "overwrite",
+        lambda images_dir, truth_dir: hwsim.build_image(
+            "hwsim_overwrite", images_dir, truth_dir, scenario="overwrite"
+        ),
+    ),
+    (
+        "xsim_unknown",
+        "xsim",
+        "none",
+        lambda images_dir, truth_dir: xsim.build_image(
+            "xsim_unknown", images_dir, truth_dir, scenario="none"
+        ),
+    ),
+    (
+        "xsim_format",
+        "xsim",
+        "format",
+        lambda images_dir, truth_dir: xsim.build_image(
+            "xsim_format", images_dir, truth_dir, scenario="format"
+        ),
     ),
 ]
 

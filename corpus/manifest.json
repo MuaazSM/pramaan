@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-29T23:44:36Z",
+  "generated_at": "2026-09-30T00:16:50Z",
   "images": [
     {
       "family": "dhsim",
@@ -48,6 +48,38 @@
       "scenario": "format",
       "sha256": "d26df78bc79830b49add3fb6aa60f429350d04a600535b4666b395d4c1fbb821",
       "size_bytes": 8400896
+    },
+    {
+      "family": "hwsim",
+      "name": "hwsim_format",
+      "path": "corpus/images/hwsim_format.img",
+      "scenario": "format",
+      "sha256": "7f6c1175ca88abc899d08171f3556907bc64c30f12f056aaa086c89594c469f3",
+      "size_bytes": 4776960
+    },
+    {
+      "family": "hwsim",
+      "name": "hwsim_overwrite",
+      "path": "corpus/images/hwsim_overwrite.img",
+      "scenario": "overwrite",
+      "sha256": "79e72f07fa3fb326f100ecd2d6361bfa70cd2243b586355bb941a1bcff34433c",
+      "size_bytes": 5047296
+    },
+    {
+      "family": "xsim",
+      "name": "xsim_format",
+      "path": "corpus/images/xsim_format.img",
+      "scenario": "format",
+      "sha256": "a89e486b556254620fee5218ad21fbb75097740b583c103ecb516cb0ea3e6154",
+      "size_bytes": 703387
+    },
+    {
+      "family": "xsim",
+      "name": "xsim_unknown",
+      "path": "corpus/images/xsim_unknown.img",
+      "scenario": "none",
+      "sha256": "5c7ac94889a960b7644c30d8eb41e3557013a284511ff6ba8d82ee06d7ca3c60",
+      "size_bytes": 711960
     }
   ],
   "note": "Written by `just corpus` (tools/synthdvr, docs/05-INFRA-QA.md \u00a74). Images live in corpus/images/ (gitignored); ground truth lives in corpus/truth/<image>.json + <image>.frames.parquet (frames.parquet is gitignored too \u2014 it's regenerable from the same config).",
