@@ -1,41 +1,30 @@
 """Evidence intake and integrity (docs/02-BACKEND.md §4-5).
 
 Registration, ``/verify`` and ``/scan`` are real in ``STUB_MODE=0`` (task
-B1): evidence is hashed through ``pramaan_core`` only, a
-``ClockObservation`` is derived from the SWGDE intake, and every mutation
-is audited. Fingerprinting and inferred-layout confirmation stay on the
-fixture store in every mode — those are C2/B2's real implementations, not
-this task's.
+B1). Fingerprint/inferred-layout GETs are real too (task B2, backed by the
+``fingerprint``/``infer_layout`` pipeline stages in
+``apps/worker/pramaan_worker/stages.py``) — inferred-layout stays empty
+until task C3 lands ``pramaan_recovery.infer``. Inferred-layout
+*confirmation* stays fixture-only in every mode for now (nothing to
+confirm in real mode yet).
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 from pramaan_core.models import EvidenceImage, InferredLayout, VendorMatch
+from pramaan_worker.runner import STAGE_NAMES
 
 from pramaan_api.deps import get_current_user, require_csrf, require_examiner_or_admin
 from pramaan_api.errors import bad_request, not_found
 from pramaan_api.fixtures import store
+from pramaan_api.real import pipeline_store as real_pipeline
 from pramaan_api.real import store as real_store
 from pramaan_api.schemas import EvidenceRegister, Job, ScanRequest
 from pramaan_api.security import User
 from pramaan_api.settings import Settings, get_settings
 
 router = APIRouter(tags=["evidence"])
-
-_SCAN_STAGES = [
-    "hash_verify",
-    "fingerprint",
-    "parse_index",
-    "infer_layout",
-    "carve",
-    "frame_index",
-    "logs",
-    "deletion_verdict",
-    "clips",
-    "timeline",
-    "motion",
-]
 
 
 @router.post("/cases/{cid}/evidence", response_model=EvidenceImage, status_code=201)
@@ -130,7 +119,7 @@ def scan_evidence(
     settings: Settings = Depends(get_settings),
     _csrf: None = Depends(require_csrf),
 ) -> Job:
-    stages = body.stages or _SCAN_STAGES
+    stages = body.stages or list(STAGE_NAMES)
     if settings.stub_mode:
         image = store.get_evidence(eid)
         if image is None:
@@ -156,19 +145,30 @@ def scan_evidence(
 
 
 @router.get("/evidence/{eid}/fingerprint", response_model=list[VendorMatch])
-def fingerprint(eid: str, user: User = Depends(get_current_user)) -> list[VendorMatch]:
-    # Owned by C2 (fingerprinter) — fixture-backed in every mode until then.
-    if store.get_evidence(eid) is None:
+def fingerprint(
+    eid: str, user: User = Depends(get_current_user), settings: Settings = Depends(get_settings)
+) -> list[VendorMatch]:
+    if settings.stub_mode:
+        if store.get_evidence(eid) is None:
+            raise not_found("evidence", eid)
+        return store.get_vendor_matches(eid)
+    if real_store.get_evidence(settings.data_dir, eid) is None:
         raise not_found("evidence", eid)
-    return store.get_vendor_matches(eid)
+    return real_pipeline.list_vendor_matches(settings.data_dir, eid)
 
 
 @router.get("/evidence/{eid}/inferred-layout", response_model=InferredLayout)
-def get_inferred_layout(eid: str, user: User = Depends(get_current_user)) -> InferredLayout:
-    # Owned by B2/recovery — fixture-backed in every mode until then.
-    if store.get_evidence(eid) is None:
-        raise not_found("evidence", eid)
-    layout = store.get_inferred_layout_for_evidence(eid)
+def get_inferred_layout(
+    eid: str, user: User = Depends(get_current_user), settings: Settings = Depends(get_settings)
+) -> InferredLayout:
+    if settings.stub_mode:
+        if store.get_evidence(eid) is None:
+            raise not_found("evidence", eid)
+        layout = store.get_inferred_layout_for_evidence(eid)
+    else:
+        if real_store.get_evidence(settings.data_dir, eid) is None:
+            raise not_found("evidence", eid)
+        layout = real_pipeline.get_inferred_layout(settings.data_dir, eid)
     if layout is None:
         raise not_found("inferred_layout", eid)
     return layout

@@ -507,19 +507,31 @@ def list_clock_observations(data_dir: str, case_id: str, image_id: str) -> list[
     ]
 
 
-def _find_case_for_evidence(data_dir: str, evidence_id: str) -> str | None:
+def iter_case_ids(data_dir: str) -> list[str]:
+    """Every case id under ``data_dir`` (i.e. every ``cases/<id>/case.db``
+    that exists), sorted for deterministic scan order. Used wherever a
+    real-mode lookup only has a global id (evidence, frame, clip, ...) and
+    must find which case owns it (docs/02-BACKEND.md §4) — fine at this
+    demo's scale (a handful of cases per process).
+    """
     root = cases_root(data_dir)
     if not root.exists():
-        return None
-    for candidate in sorted(root.iterdir()):
-        if not candidate.is_dir() or not (candidate / "case.db").exists():
-            continue
-        guarded = appdb.case_db(data_dir, candidate.name)
+        return []
+    return sorted(
+        candidate.name
+        for candidate in root.iterdir()
+        if candidate.is_dir() and (candidate / "case.db").exists()
+    )
+
+
+def _find_case_for_evidence(data_dir: str, evidence_id: str) -> str | None:
+    for candidate in iter_case_ids(data_dir):
+        guarded = appdb.case_db(data_dir, candidate)
         row = guarded.conn.execute(
             "SELECT id FROM evidence_images WHERE id = ?", (evidence_id,)
         ).fetchone()
         if row is not None:
-            return candidate.name
+            return candidate
     return None
 
 
@@ -564,6 +576,39 @@ def get_job(data_dir: str, job_id: str) -> Job | None:
 
 def list_jobs(data_dir: str, case_id: str) -> list[Job]:
     return [j for j in _job_registry(data_dir).values() if j.case_id == case_id]
+
+
+def _job_summary(data_dir: str, case_id: str, image_id: str, stage_count: int) -> dict[str, int]:
+    """``job.done`` summary counts (docs/02-BACKEND.md §7:
+    ``{recordings, recovered_frames, deletions}``). Falls back to just
+    ``stages`` if anything about the summary tables can't be read (e.g. no
+    frame index was written at all) — a job that otherwise finished ok must
+    never fail just because its summary couldn't be computed.
+    """
+    try:
+        guarded = appdb.case_db(data_dir, case_id)
+        recordings = guarded.conn.execute(
+            "SELECT COUNT(*) FROM recordings WHERE image_id = ?", (image_id,)
+        ).fetchone()[0]
+        deletions = guarded.conn.execute(
+            "SELECT COUNT(*) FROM deletion_findings WHERE image_id = ?", (image_id,)
+        ).fetchone()[0]
+        from pramaan_core.frames import query as frames_query
+
+        recovered = frames_query(
+            case_dir(data_dir, case_id),
+            "SELECT COUNT(*) AS n FROM frames WHERE source = 'carved'",
+            image_id=image_id,
+        )
+        recovered_frames = recovered[0]["n"] if recovered else 0
+        return {
+            "stages": stage_count,
+            "recordings": recordings,
+            "recovered_frames": recovered_frames,
+            "deletions": deletions,
+        }
+    except Exception:  # summary is best-effort — never fails an otherwise-ok job
+        return {"stages": stage_count}
 
 
 def run_evidence_job(
@@ -732,7 +777,12 @@ def run_evidence_job(
     job.updated_utc = utc_now_iso()
     if ok_all:
         events.publish(
-            case_id, {"type": "job.done", "job_id": job.id, "summary": {"stages": len(results)}}
+            case_id,
+            {
+                "type": "job.done",
+                "job_id": job.id,
+                "summary": _job_summary(settings_data_dir, case_id, image.id, len(results)),
+            },
         )
         append_audit(
             settings_data_dir,

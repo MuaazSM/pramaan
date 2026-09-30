@@ -7,17 +7,31 @@ from fastapi import APIRouter, Depends, Request, Response
 from pramaan_api.deps import get_current_user
 from pramaan_api.errors import bad_request, not_found
 from pramaan_api.fixtures import store
+from pramaan_api.real import pipeline_store as real_pipeline
 from pramaan_api.security import User
+from pramaan_api.settings import Settings, get_settings
 
 router = APIRouter(tags=["clips"])
 
 
 @router.get("/clips/{clip_id}/stream")
-def stream_clip(clip_id: str, request: Request, user: User = Depends(get_current_user)) -> Response:
-    clip = store.get_clip(clip_id)
-    if clip is None:
-        raise not_found("clip", clip_id)
-    data = store.clip_bytes(clip)
+def stream_clip(
+    clip_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    if settings.stub_mode:
+        clip = store.get_clip(clip_id)
+        if clip is None:
+            raise not_found("clip", clip_id)
+        data = store.clip_bytes(clip)
+    else:
+        path = real_pipeline.get_clip_path(settings.data_dir, clip_id)
+        if path is None or not path.is_file():
+            raise not_found("clip", clip_id)
+        data = path.read_bytes()
+
     total = len(data)
     range_header = request.headers.get("range")
     if range_header is None:
